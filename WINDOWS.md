@@ -10,14 +10,21 @@ inside a Python package, and the first run is a demo render.)
 
 ## Step 1 — Install two things
 
-**Python 3.12** — https://www.python.org/downloads/windows/
+**Python 3.11** — https://www.python.org/downloads/release/python-3119/
 
-- Download **Windows installer (64-bit)**
+- Scroll to *Files* → **Windows installer (64-bit)**
 - On the first screen, **tick “Add python.exe to PATH”** ← the one thing people miss
 - Then *Install Now*
 
-> Don't use the Microsoft Store version. It behaves differently with virtual
-> environments.
+> **Do not use 3.14.** The video stack (moviepy, av, faster-whisper) has no 3.14
+> builds yet — the minimal test below would work, then step 6 would fail for no
+> obvious reason. 3.11 is what this project is pinned to; 3.12 and 3.13 also work.
+>
+> Don't use the Microsoft Store version either. It behaves differently with
+> virtual environments.
+
+If you already have another Python installed, Windows keeps them side by side —
+`py -3.11` picks the one you just installed, and nothing else breaks.
 
 **Git for Windows** — https://git-scm.com/download/win → *“Click here to download”* →
 next-next-finish (all defaults are fine).
@@ -26,11 +33,12 @@ Then close **all** PowerShell windows and open a fresh one (so PATH is picked up
 Check both:
 
 ```powershell
-python --version
+py -0p          # every Python on this machine, with its path
 git --version
 ```
 
-You should see `Python 3.12.x` and `git version 2.x`.
+You should see `-V:3.11` in the list (and `-V:3.14` if you had it before), plus
+`git version 2.x`.
 
 ---
 
@@ -44,12 +52,15 @@ cd money
 
 You now have a folder `C:\Users\<you>\money`.
 
+> Check your prompt says `PS C:\Users\<you>\money>`. If it still says
+> `C:\WINDOWS\system32`, the `cd` did not run — do not clone inside system32.
+
 ---
 
 ## Step 3 — Create the environment (once)
 
 ```powershell
-python -m venv .venv
+py -3.11 -m venv .venv
 .venv\Scripts\Activate.ps1
 ```
 
@@ -65,10 +76,11 @@ Your prompt should now start with `(.venv)`.
 Install the small set of packages needed to render a video:
 
 ```powershell
-pip install fastapi "uvicorn[standard]" pydantic loguru toml requests python-multipart pillow imageio-ffmpeg
+pip install pillow imageio-ffmpeg loguru toml requests
 ```
 
-Takes 1–3 minutes.
+Takes under a minute. (Only these five are needed to render videos; `fastapi` is
+only for the optional chat server in the last section.)
 
 ---
 
@@ -212,7 +224,9 @@ gives you a download link instead.
 
 | Problem | Fix |
 |---|---|
-| `python` is not recognised | Python installed without PATH — reinstall and tick the box, or use `py` instead of `python` |
+| `python` is not recognised | Python installed without PATH — reinstall and tick the box, or use `py -3.11` instead of `python` |
+| `MoviePy`/`av`/`faster-whisper` fails to build | you are on Python 3.14 — install 3.11 and `py -3.11 -m venv .venv` |
+| Prompt shows `>>` instead of running | an unfinished command; press `Ctrl+C` then paste the single line again |
 | `Activate.ps1` cannot be loaded, running scripts is disabled | `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned` |
 | `ffmpeg is not available` | only happens if `imageio-ffmpeg` didn't install — `pip install imageio-ffmpeg` |
 | Video is a title card with `DEMO` | `[bot] demo_mode` is still `true` — step 6 |
