@@ -10,21 +10,22 @@ inside a Python package, and the first run is a demo render.)
 
 ## Step 1 — Install two things
 
-**Python 3.11** — https://www.python.org/downloads/release/python-3119/
+Most Windows machines already have a usable Python. Check what you have:
 
-- Scroll to *Files* → **Windows installer (64-bit)**
-- On the first screen, **tick “Add python.exe to PATH”** ← the one thing people miss
-- Then *Install Now*
+```powershell
+py -0p
+```
 
-> **Do not use 3.14.** The video stack (moviepy, av, faster-whisper) has no 3.14
-> builds yet — the minimal test below would work, then step 6 would fail for no
-> obvious reason. 3.11 is what this project is pinned to; 3.12 and 3.13 also work.
->
-> Don't use the Microsoft Store version either. It behaves differently with
-> virtual environments.
+**Use 3.12 or 3.13** from that list — either is fine. Skip to step 2.
 
-If you already have another Python installed, Windows keeps them side by side —
-`py -3.11` picks the one you just installed, and nothing else breaks.
+- **Nothing listed?** Install **3.11 or 3.12** from
+  https://www.python.org/downloads/windows/ → *Windows installer (64-bit)* →
+  tick **“Add python.exe to PATH”** on the first screen → *Install Now*.
+- **Only 3.14?** Don't use it. The video stack (moviepy, av, faster-whisper) has no
+  3.14 builds yet: the demo test would pass, then step 6 would fail with no obvious
+  reason. Install 3.12 alongside it — Windows keeps both, nothing breaks.
+- **Microsoft Store Python?** Avoid it; it behaves differently with virtual
+  environments.
 
 **Git for Windows** — https://git-scm.com/download/win → *“Click here to download”* →
 next-next-finish (all defaults are fine).
@@ -37,8 +38,9 @@ py -0p          # every Python on this machine, with its path
 git --version
 ```
 
-You should see `-V:3.11` in the list (and `-V:3.14` if you had it before), plus
-`git version 2.x`.
+`py -0p` should list at least one of `-V:3.12` or `-V:3.13`. Use the newest one
+that is **not** 3.14 in the commands below — everywhere this page says `-3.12`,
+substitute yours.
 
 ---
 
@@ -60,7 +62,7 @@ You now have a folder `C:\Users\<you>\money`.
 ## Step 3 — Create the environment (once)
 
 ```powershell
-py -3.11 -m venv .venv
+py -3.12 -m venv .venv
 .venv\Scripts\Activate.ps1
 ```
 
@@ -224,8 +226,8 @@ gives you a download link instead.
 
 | Problem | Fix |
 |---|---|
-| `python` is not recognised | Python installed without PATH — reinstall and tick the box, or use `py -3.11` instead of `python` |
-| `MoviePy`/`av`/`faster-whisper` fails to build | you are on Python 3.14 — install 3.11 and `py -3.11 -m venv .venv` |
+| `python` is not recognised | Python installed without PATH — reinstall and tick the box, or use `py -3.12` instead of `python` |
+| `MoviePy`/`av`/`faster-whisper` fails to build | you are on Python 3.14 — install 3.11 and `py -3.12 -m venv .venv` |
 | Prompt shows `>>` instead of running | an unfinished command; press `Ctrl+C` then paste the single line again |
 | `Activate.ps1` cannot be loaded, running scripts is disabled | `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned` |
 | `ffmpeg is not available` | only happens if `imageio-ffmpeg` didn't install — `pip install imageio-ffmpeg` |
