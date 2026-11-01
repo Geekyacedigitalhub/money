@@ -55,15 +55,14 @@ def _serialize_button(button: Button) -> dict[str, str]:
 
 
 def _serialize_reply(reply: Reply) -> dict[str, Any]:
-    video_url = None
-    poster_url = None
-    if reply.video:
-        if reply.job_id:
-            video_url = f"/api/bot/media/{reply.job_id}"
-            if reply.poster:
-                poster_url = f"/api/bot/poster/{reply.job_id}"
-        elif _inside_storage(reply.video):
-            video_url = f"/api/bot/media/raw?path={reply.video}"
+    # 所有带视频的回复都会携带 job_id（预览、状态、发布结果），因此媒体地址
+    # 只按任务 ID 暴露，避免把任意服务器路径交给浏览器。
+    video_url = f"/api/bot/media/{reply.job_id}" if reply.video and reply.job_id else None
+    poster_url = (
+        f"/api/bot/poster/{reply.job_id}"
+        if reply.video and reply.poster and reply.job_id
+        else None
+    )
     return {
         "text": reply.text,
         "video_url": video_url,
@@ -244,12 +243,6 @@ def bot_media(job_id: str) -> FileResponse:
         raise HTTPException(status_code=403, detail="forbidden")
     return FileResponse(job.video, media_type="video/mp4", filename=os.path.basename(job.video))
 
-
-@router.get("/api/bot/media/raw", include_in_schema=False)
-def bot_media_raw(path: str) -> FileResponse:
-    if not _inside_storage(path) or not os.path.isfile(path):
-        raise HTTPException(status_code=404, detail="not found")
-    return FileResponse(path, media_type="video/mp4", filename=os.path.basename(path))
 
 
 @router.get("/api/bot/poster/{job_id}")
