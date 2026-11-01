@@ -630,6 +630,13 @@ class BotCore:
             ]
             return [Reply(text="\n".join(lines), buttons=self._platform_keyboard(session))]
 
+        if kind == "conn":
+            # 只有用户明确点“重新检查”才花掉一次 API 调用。
+            from app.bot import doctor
+
+            doctor.clear_cache()
+            return [self._connect_reply()]
+
         if kind == "new":
             return [Reply(text="🎬 What should the video be about? Send me a topic.")]
 
@@ -835,7 +842,8 @@ class BotCore:
                         )
                     ]
                 )
-        if not buttons:
+        buttons.append([Button(label="🔄 Re-check now", data="conn:refresh")])
+        if not report.config_ready:
             buttons.append([Button(label="📡 Platforms", data="pl:refresh")])
         return Reply(text=doctor.format_report(report), buttons=buttons)
 

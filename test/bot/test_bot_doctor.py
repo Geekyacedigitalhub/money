@@ -74,6 +74,8 @@ PROFILE_FULL = {
 
 @pytest.fixture(autouse=True)
 def _clear_config(monkeypatch):
+    # 自检结果有 5 分钟缓存；测试之间必须清掉，否则会读到上一个用例的结果。
+    doctor.clear_cache()
     _configure(monkeypatch, api_key="", profile="", enabled=False)
 
 
@@ -90,7 +92,6 @@ def test_all_four_connected(monkeypatch):
     _configure(monkeypatch)
     get, _ = _fake_get(
         {
-            "/api/uploadposts/me": FakeResponse(200, {"success": True}),
             "/api/uploadposts/users": FakeResponse(200, PROFILE_FULL),
         }
     )
@@ -122,7 +123,6 @@ def test_partially_connected_profile_flags_the_rest(monkeypatch):
     }
     get, _ = _fake_get(
         {
-            "/api/uploadposts/me": FakeResponse(200, {"success": True}),
             "/api/uploadposts/users": FakeResponse(200, partial),
         }
     )
@@ -133,7 +133,7 @@ def test_partially_connected_profile_flags_the_rest(monkeypatch):
     assert report.all_connected is False
     assert report.status_for(Platform.tiktok).connected is True
     assert report.status_for(Platform.instagram).connected is False
-    assert report.status_for(Platform.instagram).note == "never connected"
+    assert "incomplete" in report.status_for(Platform.instagram).note
     assert report.status_for(Platform.youtube).connected is False
     text = doctor.format_report(report, markdown=False)
     assert "Still to connect" in text
@@ -155,7 +155,6 @@ def test_expired_login_is_flagged_as_reauth(monkeypatch):
     }
     get, _ = _fake_get(
         {
-            "/api/uploadposts/me": FakeResponse(200, {"success": True}),
             "/api/uploadposts/users": FakeResponse(200, expired),
         }
     )
@@ -171,7 +170,7 @@ def test_expired_login_is_flagged_as_reauth(monkeypatch):
 
 def test_rejected_api_key_is_reported_clearly(monkeypatch):
     _configure(monkeypatch)
-    get, _ = _fake_get({"/api/uploadposts/me": FakeResponse(401)})
+    get, _ = _fake_get({"/api/uploadposts/users": FakeResponse(401)})
     with mock.patch.object(doctor.requests, "get", side_effect=get):
         report = doctor.check_connection()
 
@@ -184,7 +183,6 @@ def test_unknown_profile_lists_what_exists(monkeypatch):
     _configure(monkeypatch, profile="typo")
     get, _ = _fake_get(
         {
-            "/api/uploadposts/me": FakeResponse(200, {"success": True}),
             "/api/uploadposts/users": FakeResponse(200, PROFILE_FULL),
         }
     )
@@ -201,7 +199,6 @@ def test_profile_match_ignores_case(monkeypatch):
     _configure(monkeypatch, profile="MyBrand")
     get, _ = _fake_get(
         {
-            "/api/uploadposts/me": FakeResponse(200, {"success": True}),
             "/api/uploadposts/users": FakeResponse(200, PROFILE_FULL),
         }
     )
@@ -242,7 +239,6 @@ def test_connect_command_offers_test_buttons_only_for_connected(monkeypatch):
     }
     get, _ = _fake_get(
         {
-            "/api/uploadposts/me": FakeResponse(200, {"success": True}),
             "/api/uploadposts/users": FakeResponse(200, partial),
         }
     )
@@ -268,10 +264,142 @@ def test_every_platform_has_a_doctor_row(monkeypatch):
     _configure(monkeypatch)
     get, _ = _fake_get(
         {
-            "/api/uploadposts/me": FakeResponse(200, {"success": True}),
             "/api/uploadposts/users": FakeResponse(200, PROFILE_FULL),
         }
     )
     with mock.patch.object(doctor.requests, "get", side_effect=get):
         report = doctor.check_connection()
     assert [item.platform for item in report.platforms] == list(ALL_PLATFORMS)
+
+
+def test_single_api_call_per_check(monkeypatch):
+    """免费套餐调用额度很小，一次自检只能花一个请求。"""
+    _configure(monkeypatch)
+    get, calls = _fake_get(
+        {"/api/uploadposts/users": FakeResponse(200, PROFILE_FULL)}
+    )
+    with mock.patch.object(doctor.requests, "get", side_effect=get):
+        doctor.check_connection()
+    assert len(calls) == 1
+    assert calls[0].endswith("/api/uploadposts/users")
+
+
+def test_second_check_is_served_from_cache(monkeypatch):
+    _configure(monkeypatch)
+    get, calls = _fake_get(
+        {"/api/uploadposts/users": FakeResponse(200, PROFILE_FULL)}
+    )
+    with mock.patch.object(doctor.requests, "get", side_effect=get):
+        first = doctor.check_connection()
+        second = doctor.check_connection()
+    assert first.from_cache is False
+    assert second.from_cache is True
+    assert len(calls) == 1  # 第二次没有再发请求
+
+
+def test_refresh_bypasses_cache(monkeypatch):
+    _configure(monkeypatch)
+    get, calls = _fake_get(
+        {"/api/uploadposts/users": FakeResponse(200, PROFILE_FULL)}
+    )
+    with mock.patch.object(doctor.requests, "get", side_effect=get):
+        doctor.check_connection()
+        refreshed = doctor.check_connection(refresh=True)
+    assert refreshed.from_cache is False
+    assert len(calls) == 2
+
+
+def test_cache_is_keyed_by_credentials(monkeypatch):
+    get, calls = _fake_get(
+        {"/api/uploadposts/users": FakeResponse(200, PROFILE_FULL)}
+    )
+    with mock.patch.object(doctor.requests, "get", side_effect=get):
+        _configure(monkeypatch, api_key="key-one")
+        doctor.check_connection()
+        _configure(monkeypatch, api_key="key-two")
+        doctor.check_connection()
+    assert len(calls) == 2
+
+
+def test_disconnected_tiktok_explains_the_free_plan_limit(monkeypatch):
+    """Upload-Post 免费套餐不能授权 TikTok，必须直接说清楚。"""
+    _configure(monkeypatch, profile="default")
+    only_youtube = {
+        "success": True,
+        "profiles": [
+            {
+                "username": "default",
+                "social_accounts": {"youtube": {"handle": "Geekyace Digital Hub"}},
+            }
+        ],
+    }
+    get, _ = _fake_get(
+        {"/api/uploadposts/users": FakeResponse(200, only_youtube)}
+    )
+    with mock.patch.object(doctor.requests, "get", side_effect=get):
+        report = doctor.check_connection()
+
+    tiktok = report.status_for(Platform.tiktok)
+    assert tiktok.connected is False
+    assert "Free plan" in tiktok.note
+    assert report.status_for(Platform.youtube).handle == "Geekyace Digital Hub"
+
+
+def test_quota_exhausted_is_reported_as_quota_not_a_bad_key(monkeypatch):
+    _configure(monkeypatch)
+    get, _ = _fake_get({"/api/uploadposts/users": FakeResponse(429)})
+    with mock.patch.object(doctor.requests, "get", side_effect=get):
+        report = doctor.check_connection()
+    assert report.api_key_valid is None
+    assert "limit" in report.api_error.lower()
+    text = doctor.format_report(report, markdown=False)
+    assert "Could not reach" in text or "limit" in text.lower()
+
+
+def test_profile_named_default_is_matched(monkeypatch):
+    """Upload-Post 新建账户的默认 profile 就叫 default。"""
+    _configure(monkeypatch, profile="default")
+    payload = {
+        "success": True,
+        "profiles": [{"username": "default", "social_accounts": {}}],
+    }
+    get, _ = _fake_get({"/api/uploadposts/users": FakeResponse(200, payload)})
+    with mock.patch.object(doctor.requests, "get", side_effect=get):
+        report = doctor.check_connection()
+    assert report.profile_found is True
+    assert report.profile_name == "default"
+
+
+def test_empty_entry_means_incomplete_not_never_connected(monkeypatch):
+    """点了 Connect 但没走完授权时，Upload-Post 返回空字符串。"""
+    _configure(monkeypatch, profile="default")
+    payload = {
+        "success": True,
+        "profiles": [
+            {
+                "username": "default",
+                "social_accounts": {"instagram": "", "facebook": {"handle": "hub"}},
+            }
+        ],
+    }
+    get, _ = _fake_get({"/api/uploadposts/users": FakeResponse(200, payload)})
+    with mock.patch.object(doctor.requests, "get", side_effect=get):
+        report = doctor.check_connection()
+    assert report.status_for(Platform.instagram).connected is False
+    assert "incomplete" in report.status_for(Platform.instagram).note
+    assert "incomplete" not in report.status_for(Platform.youtube).note
+
+
+def test_plan_blocked_platform_is_not_listed_as_to_connect(monkeypatch):
+    _configure(monkeypatch, profile="default")
+    payload = {
+        "success": True,
+        "profiles": [{"username": "default", "social_accounts": {"facebook": {"handle": "x"}}}],
+    }
+    get, _ = _fake_get({"/api/uploadposts/users": FakeResponse(200, payload)})
+    with mock.patch.object(doctor.requests, "get", side_effect=get):
+        report = doctor.check_connection()
+    text = doctor.format_report(report, markdown=False)
+    assert "Still to connect: Instagram, YouTube" in text
+    assert "TikTok needs a paid plan" in text
+    assert "*" not in text.split("Accounts that cannot")[0]

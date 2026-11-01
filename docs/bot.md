@@ -145,15 +145,21 @@ python -m app.bot.cli doctor                     # per-platform connection state
 python -m app.bot.cli doctor --test-post tiktok  # real 6s post, prints the live URL
 ```
 
-`doctor` reads `GET /api/uploadposts/users` and reports each platform as connected,
-never connected, or `reauth_required` (expired login). Full walkthrough, including
-every error code: [CONNECTING.md](../CONNECTING.md).
+`doctor` reads `GET /api/uploadposts/users` — **one call**, cached for 5 minutes
+(`MPT_BOT_CONNECTION_CACHE_SECONDS`, `--refresh` to bypass) — and reports each
+platform as connected, never connected, `reauth_required` (expired login), or
+blocked by the Upload-Post plan. The cache matters: the Free plan allows only
+**10 API calls per cycle**, and each publish spends one.
+
+`doctor --test-post` costs 1 call and publishes a real clip, returning the public
+URL — the only check that proves the whole chain. Full walkthrough, including every
+error code: [CONNECTING.md](../CONNECTING.md).
 
 **Account requirements on the platform side** (Upload-Post cannot bypass these):
 
 | Platform | Needs |
 |---|---|
-| TikTok | A TikTok account; business accounts are excluded from rewards |
+| TikTok | A TikTok account; business accounts are excluded from rewards. **Connecting TikTok requires a paid Upload-Post plan** — the Free plan blocks OAuth outright |
 | Instagram | A **Professional** (Creator/Business) account |
 | Facebook | A **Page**, not a personal profile |
 | YouTube | A channel with phone verification and 2-step verification |

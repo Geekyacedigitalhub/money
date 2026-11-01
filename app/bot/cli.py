@@ -225,7 +225,7 @@ def cmd_doctor(args: argparse.Namespace) -> int:
     """检查每个平台到底连上了没有，可选发一条真实的测试帖。"""
     settings = load_settings()
     print("Checking your connections…\n")
-    report = doctor.check_connection(settings)
+    report = doctor.check_connection(settings, refresh=args.refresh)
     print(doctor.format_report(report, markdown=False))
     print()
 
@@ -281,6 +281,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     doctor_cmd = sub.add_parser(
         "doctor", help="check which social platforms are really connected"
+    )
+    doctor_cmd.add_argument(
+        "--refresh",
+        action="store_true",
+        help="ignore the cached result and call the API again",
     )
     doctor_cmd.add_argument(
         "--test-post",

@@ -13,7 +13,10 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+import os
+import re
+import time
+from dataclasses import dataclass, field, replace
 from typing import Any
 
 import requests
@@ -27,6 +30,15 @@ _TIMEOUT = 20
 
 DASHBOARD_API_KEYS = "https://app.upload-post.com/api-keys"
 DASHBOARD_MANAGE_USERS = "https://app.upload-post.com/manage-users"
+
+# Upload-Post 自己在后台声明的限制。写在这里是为了让“连不上”有一个可直接
+# 执行的解释，而不是让用户反复试授权。
+PROVIDER_LIMITS: dict[Platform, str] = {
+    Platform.tiktok: (
+        "Upload-Post does not allow connecting TikTok on the Free plan — "
+        "upgrade the plan, or post to TikTok manually"
+    ),
+}
 
 
 @dataclass
@@ -65,6 +77,9 @@ class ConnectionReport:
     # Upload-Post 侧
     api_key_valid: bool | None = None
     api_error: str = ""
+    plan_name: str = ""
+    # 免费套餐每周期只有很少的 API 调用额度，因此自检必须便宜且可缓存。
+    from_cache: bool = False
     profile_name: str = ""
     profile_found: bool = False
     available_profiles: list[str] = field(default_factory=list)
@@ -124,6 +139,7 @@ def _parse_social_accounts(accounts: Any) -> list[PlatformStatus]:
     accounts = accounts if isinstance(accounts, dict) else {}
     results: list[PlatformStatus] = []
     for platform in ALL_PLATFORMS:
+        present = platform.upload_post_id in accounts
         raw = accounts.get(platform.upload_post_id)
         if isinstance(raw, dict):
             needs_reauth = bool(raw.get("reauth_required"))
@@ -137,19 +153,64 @@ def _parse_social_accounts(accounts: Any) -> list[PlatformStatus]:
                 )
             )
         else:
+            # 键存在但值为空 = 用户点了 Connect 却没走完授权；键不存在 = 从没连过。
+            fallback = "connection incomplete" if present else "never connected"
             results.append(
                 PlatformStatus(
                     platform=platform,
                     connected=False,
-                    note="never connected" if raw in (None, "") else "connection incomplete",
+                    note=PROVIDER_LIMITS.get(platform, fallback),
                 )
             )
     return results
 
 
-def check_connection(settings: BotSettings | None = None) -> ConnectionReport:
-    """执行完整自检。任何网络失败都会被转换成可读的说明，不抛异常。"""
+_CACHE: tuple[tuple[str, str], float, ConnectionReport] | None = None
+_CACHE_TTL_SECONDS = int(os.getenv("MPT_BOT_CONNECTION_CACHE_SECONDS", "300"))
+
+
+def clear_cache() -> None:
+    """丢弃缓存；按钮上的“重新检查”和测试会用到。"""
+    global _CACHE
+    _CACHE = None
+
+
+def check_connection(
+    settings: BotSettings | None = None, *, refresh: bool = False
+) -> ConnectionReport:
+    """检查每个平台是否真的连上了。
+
+    只发一个请求（``GET /api/uploadposts/users``）。早先的实现先查 ``/me`` 再查
+    ``/users``，但免费套餐每周期只有个位数的 API 调用额度，一次自检就花掉两次
+    不值得 —— ``/users`` 返回 401 同样能说明 Key 无效。
+
+    结果默认缓存 5 分钟：反复点“检查连接”不应该消耗成品的发布额度。
+    """
+    global _CACHE
     settings = settings or BotSettings()
+
+    from app.config import config as runtime_config
+
+    api_key = str(runtime_config.app.get("upload_post_api_key", "") or "").strip()
+    profile = str(runtime_config.app.get("upload_post_username", "") or "").strip()
+
+    if not refresh and _CACHE is not None:
+        cached_key, cached_at, cached_report = _CACHE
+        if cached_key == (api_key, profile) and (
+            time.monotonic() - cached_at
+        ) < _CACHE_TTL_SECONDS:
+            # 返回副本：直接改缓存里的对象会让上一次的结果也变成“来自缓存”。
+            return replace(cached_report, from_cache=True)
+
+    report = _check_uncached(settings, api_key, profile)
+    report.from_cache = False
+    _CACHE = ((api_key, profile), time.monotonic(), report)
+    return report
+
+
+def _check_uncached(
+    settings: BotSettings, api_key: str, profile: str
+) -> ConnectionReport:
     report = ConnectionReport(
         platforms=[PlatformStatus(platform=item) for item in ALL_PLATFORMS]
     )
@@ -157,11 +218,6 @@ def check_connection(settings: BotSettings | None = None) -> ConnectionReport:
     ready, missing = publish_account_ready()
     report.config_ready = ready
     report.config_missing = missing
-
-    from app.config import config as runtime_config
-
-    api_key = str(runtime_config.app.get("upload_post_api_key", "") or "").strip()
-    profile = str(runtime_config.app.get("upload_post_username", "") or "").strip()
     report.profile_name = profile
 
     if not api_key:
@@ -173,41 +229,44 @@ def check_connection(settings: BotSettings | None = None) -> ConnectionReport:
         report.api_error = "no upload_post_username configured"
         return report
 
-    # 1) 校验 Key。失败说明 Key 写错或被撤销，比"平台没连上"更容易误判。
-    try:
-        response = requests.get(
-            f"{API_BASE}/api/uploadposts/me",
-            headers=_headers(api_key),
-            timeout=_TIMEOUT,
-        )
-        if response.status_code in (401, 403):
-            report.api_key_valid = False
-            report.api_error = "the API key was rejected (401/403)"
-            return report
-        response.raise_for_status()
-        report.api_key_valid = True
-    except requests.RequestException as exc:
-        report.api_key_valid = None
-        report.api_error = f"could not reach Upload-Post: {exc}"
-        logger.warning(f"upload-post key check failed: {exc}")
-        return report
-
-    # 2) 读取所有 profile，找到配置里指定的那个。
     try:
         response = requests.get(
             f"{API_BASE}/api/uploadposts/users",
             headers=_headers(api_key),
             timeout=_TIMEOUT,
         )
+    except requests.RequestException as exc:
+        report.api_key_valid = None
+        report.api_error = f"could not reach Upload-Post: {exc}"
+        logger.warning(f"upload-post profile listing failed: {exc}")
+        return report
+
+    if response.status_code in (401, 403):
+        report.api_key_valid = False
+        report.api_error = "the API key was rejected (401/403)"
+        return report
+    if response.status_code == 429:
+        report.api_key_valid = None
+        report.api_error = (
+            "API call limit reached for this cycle — publish quota is separate, "
+            "check your Upload-Post usage page"
+        )
+        return report
+
+    try:
         response.raise_for_status()
         body = response.json()
     except (requests.RequestException, ValueError) as exc:
+        report.api_key_valid = None
         report.api_error = f"could not list profiles: {exc}"
         logger.warning(f"upload-post profile listing failed: {exc}")
         return report
 
-    if isinstance(body, dict) and isinstance(body.get("limit"), int):
-        report.plan_limit = body["limit"]
+    report.api_key_valid = True
+    if isinstance(body, dict):
+        if isinstance(body.get("limit"), int):
+            report.plan_limit = body["limit"]
+        report.plan_name = str(body.get("plan") or "").strip()
 
     profiles = body.get("profiles") if isinstance(body, dict) else None
     entries = [item for item in profiles or [] if isinstance(item, dict)]
@@ -259,7 +318,8 @@ def _clean_missing(value: str) -> str:
 
 def _plain(text: str) -> str:
     """去掉 Markdown 装饰，让终端输出也干净。"""
-    return text.replace("**", "").replace("`", "")
+    text = text.replace("**", "").replace("*", "").replace("`", "")
+    return re.sub(r"_\((.*?)\)_", r"\1", text, flags=re.DOTALL)
 
 
 def format_report(report: ConnectionReport, *, markdown: bool = True) -> str:
@@ -275,9 +335,16 @@ def _format_report_markdown(report: ConnectionReport) -> str:
         lines.append("❌ **Not configured yet**")
         lines.append(f"Missing: {_clean_missing(report.config_missing)}")
         lines.append("")
-        lines.append(f"1. Create an API key: {DASHBOARD_API_KEYS}")
-        lines.append(f"2. Create a profile and connect accounts: {DASHBOARD_MANAGE_USERS}")
-        lines.append("3. Paste both into `[app]` in config.toml")
+        lines.append("In `config.toml`:")
+        lines.append("")
+        lines.append("```toml")
+        lines.append("[app]")
+        lines.append("upload_post_enabled = true")
+        lines.append('upload_post_api_key = "<your key>"   # ' + DASHBOARD_API_KEYS)
+        lines.append('upload_post_username = "default"     # the PROFILE name')
+        lines.append("```")
+        lines.append("")
+        lines.append(f"Then connect Facebook / Instagram / YouTube here: {DASHBOARD_MANAGE_USERS}")
         return "\n".join(lines)
 
     if report.api_key_valid is False:
@@ -322,16 +389,33 @@ def _format_report_markdown(report: ConnectionReport) -> str:
         lines.append(f"{status.emoji} **{status.platform.label}** — {status.describe()}")
 
     lines.append("")
+    if report.from_cache:
+        lines.append(
+            f"_(cached result — free plans have a small API call budget, so this is "
+            f"reused for {max(1, _CACHE_TTL_SECONDS // 60)} minutes. "
+            "Tap 🔄 Re-check / pass --refresh to spend a call.)_"
+        )
+    else:
+        lines.append(
+            "_(1 API call used. Every publish uses 1 more — free plans include only "
+            "a handful per cycle.)_"
+        )
+    lines.append("")
     if report.all_connected:
         lines.append("🎉 All four platforms are connected. You can publish for real.")
     else:
+        blocked = [item for item in report.platforms if item.platform in PROVIDER_LIMITS]
         missing = [
             item.platform.label
             for item in report.platforms
-            if not item.connected or item.needs_reauth
+            if (not item.connected or item.needs_reauth)
+            and item.platform not in PROVIDER_LIMITS
         ]
-        lines.append(f"Still to connect: **{', '.join(missing)}**")
-        lines.append(f"Connect them here: {DASHBOARD_MANAGE_USERS}")
+        if missing:
+            lines.append(f"Still to connect: **{', '.join(missing)}**")
+            lines.append(f"Connect them here: {DASHBOARD_MANAGE_USERS}")
+        for item in blocked:
+            lines.append(f"{item.platform.label} needs a paid plan — leave it unticked.")
         lines.append("")
         lines.append("Accounts that cannot be connected will be *skipped* on publish,")
         lines.append("not treated as a hard failure.")

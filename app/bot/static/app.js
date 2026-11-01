@@ -278,13 +278,19 @@
     }
   }
 
+  const esc = (value) =>
+    String(value ?? "").replace(/[&<>"']/g, (ch) =>
+      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[ch],
+    );
+
   async function openConnections() {
     const sheet = $("guidesSheet");
     sheet.hidden = false;
     const body = $("guidesBody");
     body.innerHTML = "Checking each platform…";
     try {
-      const data = await api("/api/bot/connections");
+      // 手动点开时强制刷新，明确表达“我现在就想知道真实状态”。
+      const data = await api("/api/bot/connections?refresh=1");
       const rows = data.report.platforms
         .map((item) => {
           const icon = item.reauth_required ? "⚠️" : item.connected ? "✅" : "❌";
@@ -294,13 +300,19 @@
             : item.connected
               ? `connected as ${item.handle || item.display_name || "account"}`
               : item.note || "not connected";
-          return `<div class="guide"><h4>${icon} ${label}</h4>
-                  <dl><dd>${detail}</dd></dl></div>`;
+          return `<div class="guide"><h4>${icon} ${esc(label)}</h4>
+                  <dl><dd>${esc(detail)}</dd></dl></div>`;
         })
         .join("");
       body.innerHTML =
         `<div class="guide"><h4>${data.all_connected ? "All four connected" : "Not everything is connected yet"}</h4>
-           <dl><dd>Profile: ${data.report.profile_name || "—"}</dd></dl></div>` +
+           <dl><dd>Profile: ${esc(data.report.profile_name || "—")}${
+             data.report.plan_limit ? ` · plan allows ${data.report.plan_limit} profile(s)` : ""
+           }</dd>
+           <dt>Cost of this check</dt>
+           <dd>1 API call · cached 5 minutes${
+             data.report.config_ready ? "" : " · not configured yet"
+           }</dd></dl></div>` +
         rows +
         `<div class="guide"><h4>Connect or fix accounts</h4>
            <dl><dd><a href="${data.manage_url}" target="_blank" rel="noopener">${data.manage_url}</a></dd>

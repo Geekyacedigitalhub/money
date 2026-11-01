@@ -100,58 +100,61 @@ Restart, then send a topic again.
 
 ---
 
-## Step 3 — Connect your 4 accounts (10 minutes, once)
+## Step 3 — Connect your accounts (10 minutes, once)
 
 You connect the accounts **once, at upload-post.com** — not to this code. Then the
 bot posts through it with a single key.
 
-1. Sign up at **https://app.upload-post.com**
-2. Create an API key: **https://app.upload-post.com/api-keys** → copy it
-3. Create a profile: **https://app.upload-post.com/manage-users** → name it `ace_brand` → copy that name
-4. On that profile, click **Connect** next to TikTok, Instagram, Facebook, YouTube
-5. Paste into `config.toml`:
+**Your account is already set up** (`Geekyacedigitalhub`, profile `default`, API key
+`Geekyacedigitalhub`). Only two things are left:
+
+1. **Fix Instagram** — go to **https://app.upload-post.com/manage-users**, open the
+   profile **`default`**. Instagram shows *Geekyace Digital Hub* with a **red ✕**
+   (Facebook is green). Click **Reconnect** on Instagram and approve. It must be a
+   Creator/Business account.
+2. **Connect YouTube** — same page, same profile → **Connect** → Google sign-in.
+   The Google account needs **phone verification + 2-Step Verification**.
+
+**TikTok is not available on the Free plan.** Upload-Post says so in a yellow
+banner. Either upgrade the plan, or keep posting to TikTok by hand from the
+**download** button — the bot handles Facebook, Instagram and YouTube either way.
+
+Then put the key in `config.toml`:
 
 ```toml
 [app]
 upload_post_enabled = true
-upload_post_api_key = "..."
-upload_post_username = "ace_brand"      # the PROFILE name — not your email
-upload_post_platforms = ["tiktok", "instagram", "facebook", "youtube"]
+upload_post_api_key = "eyJhbGciOi…"      # from https://app.upload-post.com/api-keys
+upload_post_username = "default"          # the PROFILE name — not your email
+upload_post_platforms = ["facebook", "instagram", "youtube", "tiktok"]
 upload_post_youtube_privacy_status = "unlisted"   # flip to "public" once you trust it
 ```
 
-**Three things block most people — check them before you start:**
+**Watch your budget:** the Free plan gives **10 API calls per cycle** (resets on the
+1st) and 30 minutes of video processing. One publish = 1 call; `/connect` is cached
+for 5 minutes so it doesn't burn calls when you re-check.
 
-| Platform | Blocker |
-|---|---|
-| Instagram | Must be a **Creator/Business** account (Settings → Account type) |
-| Facebook | Must be a **Page**, not your personal profile |
-| YouTube | The Google account needs **phone verification + 2-Step Verification** |
-
-**Now verify it — this is the part that matters:**
+**Now verify it — this is the part that matters** (1 call, cached):
 
 ```bash
 python -m app.bot.cli doctor
 ```
 
 ```
-✅ Connected to profile `ace_brand`
+✅ Connected to profile `default`
+Plan allows 2 profile(s).
 
-✅ TikTok — connected as @ace
-✅ Instagram — connected as @ace.ig
-❌ Facebook — never connected
+✅ Facebook  — connected as Geekyace Digital Hub
+❌ Instagram — connection incomplete
+❌ YouTube   — never connected
+❌ TikTok    — Upload-Post does not allow connecting TikTok on the Free plan
 ```
 
-Then prove it end-to-end with a real post:
+Then prove it end-to-end with one real post (1 call):
 
 ```bash
-python -m app.bot.cli doctor --test-post tiktok
+python -m app.bot.cli doctor --test-post facebook
 ```
-
-It posts a 6-second clip labelled "CONNECTION TEST" and prints the live URL.
-**Open that link.** If it loads, everything works.
-
-Full detail, including what every error message means: **[CONNECTING.md](CONNECTING.md)**.
 
 ## Step 4 — Publish for the first time
 
@@ -160,8 +163,8 @@ Send a topic, wait for the preview, then tap:
 - **🚀 Publish now** — posts to every selected platform
 - **📡 Change platforms** — untick the ones you don't want yet
 
-**Do your first test with one platform selected** (say TikTok). Confirm it appears
-live. Then enable the rest.
+**Do your first test with one platform selected** — Facebook, since it is already
+connected. Confirm it appears live, then enable Instagram and YouTube.
 
 > Everything is off by default except your tap. `auto_publish = false` means
 > nothing goes out without you pressing the button. Keep it that way until you
