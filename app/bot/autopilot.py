@@ -326,10 +326,16 @@ class Autopilot:
         return self._core
 
     def mode(self) -> str:
-        """live = 会真的发出去；rehearsal = 只生成，不假装发布。"""
-        ready, _reason = publish_account_ready()
+        """live = 直接发出去；manual = 只做视频，人工上传；rehearsal = 占位渲染。
+
+        Path B 用的是 manual：视频是真的，只是发布这一步交给人 + 平台自带的
+        免费定时工具，所以不能把它当成“排练”。
+        """
         if self.dry_run or self.settings.demo_mode:
             return "rehearsal"
+        if self.settings.delivery == "manual":
+            return "manual"
+        ready, _reason = publish_account_ready()
         return "live" if (ready and self.publish) else "rehearsal"
 
     def _wait(self, job_id: str, done: set[JobState], timeout: float) -> Any:
@@ -398,7 +404,12 @@ class Autopilot:
         }
 
         # demo 视频绝不自动发到真实账号上：那是占位画面，不是内容。
-        if self.mode() == "rehearsal" or job.simulated:
+        if self.mode() == "manual" and not job.simulated:
+            record["note"] = (
+                "manual delivery — run `python -m app.bot.cli week` to package it, "
+                "then upload with Meta Business Suite / YouTube Studio / TikTok"
+            )
+        elif self.mode() == "rehearsal" or job.simulated:
             record["note"] = (
                 "rehearsal — video made but not published (demo render or "
                 "publishing not configured)"
@@ -523,7 +534,7 @@ class Autopilot:
             "last_run": self.state.last_run,
             "runs": self.state.runs[-5:],
             "timezone": str(self._tz),
-            "blockers": preflight(),
+            "blockers": preflight(self.settings),
         }
 
 
@@ -532,7 +543,7 @@ class Autopilot:
 # ----------------------------------------------------------------------
 
 
-def preflight() -> list[dict[str, str]]:
+def preflight(settings: BotSettings | None = None) -> list[dict[str, str]]:
     """列出“还不能真的自动发出去”的原因，每条都带修复方法。
 
     这是全自动模式里最重要的一个函数：没有它，用户只会看到“跑完了但没发”，
@@ -541,7 +552,7 @@ def preflight() -> list[dict[str, str]]:
     from app.config import config as runtime_config
 
     blockers: list[dict[str, str]] = []
-    settings = load_settings()
+    settings = settings or load_settings()
     app_cfg = runtime_config.app
 
     if settings.demo_mode:
@@ -562,8 +573,9 @@ def preflight() -> list[dict[str, str]]:
                 "key": "llm",
                 "why": "no LLM key: it cannot write a script",
                 "fix": (
-                    f"set [app] {key_field or 'llm_provider + <provider>_api_key'} "
-                    "(Moonshot, OpenAI, Gemini… all work)"
+                    f"set [app] {key_field or 'llm_provider + <provider>_api_key'} — "
+                    "a free Gemini key (aistudio.google.com/app/apikey) works, or "
+                    "run Ollama locally with llm_provider = \"ollama\" and pay nothing"
                 ),
             }
         )
@@ -576,9 +588,26 @@ def preflight() -> list[dict[str, str]]:
             {
                 "key": "footage",
                 "why": "no stock-footage key: there is nothing to put behind the voice",
-                "fix": "get a free key at https://www.pexels.com/api/ and paste it into [app] pexels_api_keys",
+                "fix": (
+                    "get the free Pexels key at https://www.pexels.com/api/ and put "
+                    "it in [app] pexels_api_keys"
+                ),
             }
         )
+
+    if settings.delivery == "manual":
+        # 手动模式不需要 Upload-Post；只要确认他还知道东西放在哪。
+        blockers.append(
+            {
+                "key": "delivery",
+                "why": (
+                    "delivery = manual: nothing is sent automatically — package with "
+                    "`cli week` and schedule it yourself"
+                ),
+                "fix": "that is how Path B works; see SCHEDULING.md (free, no card)",
+            }
+        )
+        return blockers
 
     ready, reason = publish_account_ready()
     if not ready:

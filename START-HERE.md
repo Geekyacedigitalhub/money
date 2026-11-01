@@ -302,4 +302,5 @@ python -m app.bot.cli status
 | Video is a title card with "DEMO PREVIEW" | `[bot] demo_mode` is still `true` |
 | `403 cross-origin browser request` | Start with `--trust-proxy`, or set `CORS_ALLOWED_ORIGINS` |
 
-Full reference: [docs/bot.md](docs/bot.md).
+Full reference: [docs/bot.md](docs/bot.md). One linear checklist for all of
+it: [GET-EVERYTHING.md](GET-EVERYTHING.md).

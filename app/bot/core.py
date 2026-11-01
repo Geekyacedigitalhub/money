@@ -41,6 +41,8 @@ _MAX_JOBS = 200
 _MAX_PENDING_PER_CHAT = 50
 _MAX_PENDING_CHATS = 200
 
+GITHUB_REPO = "https://github.com/Geekyacedigitalhub/money.git"
+
 HELP_TEXT = """\
 🤖 **{name}**
 
@@ -60,6 +62,7 @@ stock footage, and post it to Facebook, YouTube, TikTok and Instagram.
 /cancel — stop the current job
 /connect — check which platforms are really connected
 /auto — what the scheduler will post next (and pause it)
+/week — make a batch of videos + captions, ready to schedule by hand
 /link — the address of this bot (open it on your phone)
 /how — what each platform accepts (length, account, payouts)
 /mode — show demo / live status
@@ -256,6 +259,8 @@ class BotCore:
             return [self._autopilot_reply()]
         if command in {"link", "url", "site", "app"}:
             return [self._link_reply()]
+        if command in {"week", "batch"}:
+            return self._start_week(session.chat_id, argument)
         if command in {"how", "rules", "limits"}:
             from app.bot import delivery
 
@@ -840,18 +845,112 @@ class BotCore:
         return Reply(text="🛑 Cancelled.")
 
     # ------------------------------------------------------------------
+    # 按周出片（人工上传用）
+    # ------------------------------------------------------------------
+
+    def _start_week(self, chat_id: str, argument: str) -> list[Reply]:
+        """一次做几天的量，打包成 zip，回复下载地址。"""
+        from app.bot import export
+
+        count = 7
+        for token in (argument or "").split():
+            if token.isdigit():
+                count = max(1, min(14, int(token)))
+                break
+
+        def _run() -> None:
+            try:
+                from app.bot.autopilot import Autopilot
+
+                auto = Autopilot(settings=self.settings)
+                pool = auto.topics()
+                start = int(auto.state.cursor) % len(pool) if pool else 0
+                topics = [
+                    pool[(start + index) % len(pool)] for index in range(count)
+                ]
+                result = export.batch_from_topics(self, topics)
+            except Exception as exc:  # noqa: BLE001
+                logger.exception(f"weekly batch failed: {exc}")
+                self._emit(
+                    chat_id, Reply(text=f"❌ Could not build the batch: {exc}")
+                )
+                return
+
+            lines = [
+                f"📦 **{result['count']} videos ready** ({result['name']})",
+            ]
+            if result["failed"]:
+                lines.append(f"⚠️ {result['failed']} failed")
+            lines += [
+                "",
+                "Download the zip, then schedule with the platforms' own",
+                "free tools: Meta Business Suite (IG + FB), YouTube Studio,",
+                "TikTok. Times are in schedule.csv — see SCHEDULING.md.",
+            ]
+            if result["zip"]:
+                lines += ["", f"/api/bot/export/{os.path.basename(result['zip'])}"]
+            self._emit(chat_id, Reply(text="\n".join(lines)))
+
+        threading.Thread(target=_run, name="mpt-bot-week", daemon=True).start()
+        return [
+            Reply(
+                text=(
+                    f"🗓 Making {count} videos for the week.\n"
+                    "This takes a few minutes each — I'll send the download "
+                    "when the batch is ready."
+                )
+            )
+        ]
+
+    # ------------------------------------------------------------------
     # 我自己的链接
     # ------------------------------------------------------------------
 
+    @staticmethod
+    def _public_url_answers(url: str) -> bool:
+        """这个地址现在真的能打开吗？打不开就别让人以为是坏了。
+
+        只做一个很短的 GET：连不通就返回 False，不抛异常、不拖慢 /link。
+        """
+        import requests
+
+        try:
+            response = requests.get(url, timeout=2.5, allow_redirects=True)
+            return response.status_code < 500
+        except Exception:  # noqa: BLE001 - 网络不可达就是“还没部署”
+            return False
+
     def _link_reply(self) -> Reply:
-        """给出这个机器人自己的地址：手机上收藏它，就不用开电脑。"""
+        """给出这个机器人自己的地址——只给真正属于用户的地址。"""
         from app.bot import doctor
+        from app.bot.config import is_temporary_url
 
         url = self.settings.public_url
-        if url and not url.rstrip("/").endswith("/bot"):
-            url = url.rstrip("/") + "/bot"   # 聊天页在 /bot，直接给可用的地址
         lines: list[str] = []
-        if url:
+
+        # 临时隧道/沙箱预览域名不是“他的链接”：会过期，而且换个会话就没了。
+        # 与其把它包装成正式地址，不如直接说清楚还差哪一步。
+        if url and is_temporary_url(url):
+            lines += [
+                "🔗 **No permanent link yet**",
+                "",
+                f"Configured address is a temporary preview ({url.split('//')[-1].split('/')[0]}).",
+                "It dies with this session, so it is not your link.",
+                "",
+                "Your own link = a domain you control, pointed at a server that",
+                "stays on. One command on the VPS:",
+                "",
+                "```",
+                "git clone --depth 1 " + GITHUB_REPO + " /opt/money",
+                "cd /opt/money && sudo bash deploy/setup-vps.sh --domain bot.yourdomain.com",
+                "```",
+                "",
+                "Then set `[bot] public_url = \"https://bot.yourdomain.com\"` and",
+                "restart — this command will answer with it. Details: DEPLOY.md",
+            ]
+        elif url:
+            if not url.rstrip("/").endswith("/bot"):
+                url = url.rstrip("/") + "/bot"   # 聊天页在 /bot，给可直接打开的地址
             lines += [
                 "🔗 **Your bot**",
                 f"{url}",
@@ -859,6 +958,12 @@ class BotCore:
                 "Open it on your phone and add it to your home screen — it behaves",
                 "like an app. Same chat, same jobs, same videos.",
             ]
+            if not self._public_url_answers(url):
+                lines.append("")
+                lines.append(
+                    "_Not loading yet? The server isn't deployed — run "
+                    "`deploy/setup-vps.sh` (see DEPLOY.md)._"
+                )
             if self.settings.telegram_token:
                 lines += ["", "Telegram works too: message your bot directly."]
         else:
@@ -867,13 +972,11 @@ class BotCore:
                 "",
                 "Locally: http://127.0.0.1:8080/bot",
                 "",
-                "For a link that works from anywhere, either",
-                "• run `python -m app.bot.cli serve` on a small VPS and point a",
-                "  domain at it (Caddyfile included in `deploy/`), or",
-                "• start a Cloudflare tunnel: `cloudflared tunnel --url http://localhost:8080`",
+                "For a link that works from anywhere: run the bot on a small VPS and",
+                "point a domain at it — `deploy/setup-vps.sh` does the rest.",
                 "",
-                "Then set `[bot] public_url = \"https://bot.yourdomain.com\"` and this",
-                "command will show it. Step by step: DEPLOY.md",
+                "Then set `[bot] public_url = \"https://bot.yourdomain.com\"`.",
+                "Step by step: DEPLOY.md",
             ]
         lines += ["", f"Dashboard: {doctor.DASHBOARD_MANAGE_USERS}"]
         return Reply(text="\n".join(lines))

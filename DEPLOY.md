@@ -189,10 +189,67 @@ docker compose -f deploy/docker-compose.yml logs -f bot
 docker compose -f deploy/docker-compose.yml logs caddy | tail -40
 ```
 
-## Cost
+## What actually costs money
 
-| Item | Per month |
+**One thing: the VPS.** Everything else has a $0 path, and this repo is already
+wired for them.
+
+| Piece | Free option | When you'd pay |
+|---|---|---|
+| **VPS (2 vCPU / 4 GB)** | — | **always — this is the only required purchase, ~$5/mo** |
+| Domain | you already own `geekyacedigitalhub.com` | only if you buy another one |
+| HTTPS certificate | Let's Encrypt, automatic via Caddy | never |
+| Stock footage | **Pexels / Pixabay free API key** | never for short-form |
+| Script writing (LLM) | **Ollama on the server** (`llm_provider = "ollama"`, no key at all) or a **free Gemini key** | ~$1–2/month only if you prefer a hosted model's quality |
+| Publishing | Upload-Post Free (10 publishes/cycle) | only for TikTok or >10 posts/cycle |
+| Telegram | free, @BotFather | never |
+| This software | yours, MIT | never |
+
+### The strictly-$0 configuration
+
+Nothing below needs a card:
+
+```toml
+[app]
+llm_provider = "ollama"                  # free, no API key, runs on the VPS
+ollama_model_name = "qwen2.5:3b"         # ~2 GB RAM, fine for 60-second scripts
+ollama_base_url = ""                     # empty = http://127.0.0.1:11434/v1
+pexels_api_keys = ["your-free-pexels-key"]
+
+upload_post_enabled = true
+upload_post_api_key = "…"                # Free plan key
+upload_post_username = "default"
+
+[bot]
+demo_mode = false
+public_url = "https://bot.geekyacedigitalhub.com"
+autopilot_max_per_day = 1                # stay under the Free API cap
+```
+
+```bash
+# one-off, on the server, for the free local model
+curl -fsSL https://ollama.com/install.sh | sh
+ollama pull qwen2.5:3b
+```
+
+**The honest trade-off:** on 4 GB the local 3B model writes plainer scripts than a
+hosted model, and rendering competes with it for RAM. If quality matters more than
+the $1–2, take the free Gemini key instead — it costs nothing, uses no server RAM,
+and reads noticeably better. Ollama is the answer when you want *zero accounts* as
+well as zero cost.
+
+### Where money actually buys something
+
+| Spend | Buys you |
 |---|---|
+| VPS $5/mo | the bot running 24/7 — **required** |
+| Upload-Post paid | TikTok connection + more than 10 publishes per cycle |
+| Hosted LLM ~$1–2/mo | better hooks, better retention, less editing |
+
+Nothing in this repo is gated. The free path is the same code with different
+values in `config.toml`.
+
+---|---|
 | VPS (2 vCPU / 4 GB) | ~$5 |
 | Domain | already yours |
 | TLS certificate | free (Let's Encrypt, automatic) |

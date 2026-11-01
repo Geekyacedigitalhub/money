@@ -62,6 +62,36 @@ def _as_platform_list(value: Any, default: list[str]) -> list[str]:
     return [item.value for item in sorted(found, key=order.get)]
 
 
+# 这些域名只属于某次运行/某个沙箱，随时会失效。它们可以出现在浏览器地址栏里，
+# 但绝不能当成“用户自己的链接”发出去。
+_TEMPORARY_SUFFIXES = (
+    ".e2b.app",
+    ".ngrok.io",
+    ".ngrok-free.app",
+    ".trycloudflare.com",
+    ".loca.lt",
+    ".serveo.net",
+    ".vercel.app",
+)
+
+
+def is_temporary_url(url: str) -> bool:
+    """判断一个地址是不是临时隧道/预览域名（会过期，不能当正式链接）。"""
+    text = str(url or "").strip().lower()
+    if not text:
+        return True
+    host = text.split("//", 1)[-1].split("/", 1)[0].split(":", 1)[0]
+    if host in {"localhost", "127.0.0.1", "0.0.0.0", "[::1]"}:
+        return True
+    return any(host.endswith(suffix) for suffix in _TEMPORARY_SUFFIXES)
+
+
+def _as_delivery(value: Any) -> str:
+    """只接受两种取值；写错时回落到 upload_post，而不是悄悄变成手动。"""
+    text = str(value or "").strip().lower().replace("-", "_")
+    return "manual" if text in {"manual", "hand", "human", "week"} else "upload_post"
+
+
 def _as_url(value: Any) -> str:
     """只接受 http(s) 地址，去掉结尾斜杠；其它输入当成“没配置”。"""
     text = str(value or "").strip().rstrip("/")
@@ -139,6 +169,10 @@ class BotSettings:
     autopilot_publish: bool = True
     # 自己的选题清单；留空 = storage/bot/autopilot/topics.txt
     autopilot_topics_file: str = ""
+    # 成品怎么出去：
+    #   "upload_post" = 机器人直接发（需要 Upload-Post Key）
+    #   "manual"      = 只做视频，用 /week 打包，人工上传到平台自带的免费定时工具
+    delivery: str = "upload_post"
     # 你自己的公开地址（自定义域名 / 隧道 / VPS），用于 /link 和二维码。
     # 留空 = 只显示本机地址。
     public_url: str = ""
@@ -257,6 +291,7 @@ def load_settings() -> BotSettings:
             raw.get("autopilot_publish"), defaults.autopilot_publish
         ),
         autopilot_topics_file=str(raw.get("autopilot_topics_file") or "").strip(),
+        delivery=_as_delivery(raw.get("delivery")),
         # 环境变量优先：容器/云平台用 MPT_BOT_PUBLIC_URL 覆盖挂载进来的配置。
         public_url=_as_url(
             os.getenv("MPT_BOT_PUBLIC_URL") or raw.get("public_url") or ""

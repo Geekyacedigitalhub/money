@@ -48,7 +48,12 @@
     return escaped
       .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
       .replace(/`([^`]+)`/g, "<code>$1</code>")
-      .replace(/(^|\s)_([^_]+)_(?=\s|$|\.)/g, "$1<em>$2</em>");
+      .replace(/(^|\s)_([^_]+)_(?=\s|$|\.)/g, "$1<em>$2</em>")
+      // 下载包：这是唯一需要真的能点的东西（手机上下载一周的成品）。
+      .replace(
+        /(^|\s)((?:\/api\/bot\/export\/[\w.-]+\.zip)|(https?:\/\/[^\s<]+))/g,
+        '$1<a href="$2" target="_blank" rel="noopener">$2</a>',
+      );
   }
 
   function scrollToBottom() {
