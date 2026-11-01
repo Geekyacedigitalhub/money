@@ -46,10 +46,18 @@ def main(argv: list[str] | None = None) -> int:
         force_utf8_console()
         return cli.run_cli(argv[1:])
 
+    # bot 子命令自己解析全部参数（serve/status/ask/publish/demo），因此和 cli
+    # 一样直接转交，避免外层解析器吞掉 --telegram 这类业务参数。
+    if argv and argv[0] == "bot":
+        from app.bot.cli import main as bot_main
+
+        return bot_main(argv[1:])
+
     parser = argparse.ArgumentParser(prog="mpt", description="MoneyPrinterTurbo")
     parser.add_argument("--version", action="version", version=__version__)
     commands = parser.add_subparsers(dest="command")
     commands.add_parser("cli", help="generate videos (mpt cli --help)")
+    commands.add_parser("bot", help="social publishing bot (mpt bot --help)")
     webui = commands.add_parser("webui", help="start the WebUI")
     webui.add_argument("--host", default="127.0.0.1", help="listen address")
     webui.add_argument("--port", type=_port_number, help="listen port (default: first free port from 8501)")

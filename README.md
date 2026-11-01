@@ -185,6 +185,27 @@
 
 ---
 
+## 社交发布机器人 🤖
+
+聊天式入口：发一个主题，机器人自动生成竖版短视频，并发布到
+**Facebook、YouTube、TikTok 和 Instagram**，支持网页聊天页和 Telegram。
+
+```bash
+python -m app.bot.cli status    # 查看哪些环节已启用、哪些仍在模拟
+python -m app.bot.cli serve     # 打开 http://127.0.0.1:8080/bot
+python -m app.bot.cli autopilot # 无人值守：按点自动选题、生成、发布
+```
+
+- **可以完全不用管。** `autopilot_enabled = true` 时 `serve` 会按时自动发帖（默认每天 3 条，时区可配），并在聊天里用 `/auto` 查看排期、暂停或立即跑一轮。
+- **不点确认就不会发布。** 收到成片、各平台文案和按钮后，再决定发布、重做或丢弃。
+- **先跑演示模式。** 没有任何密钥时也会渲染一段带 DEMO 标记的占位视频，先验证整条链路再花钱。
+- **一个 Key 覆盖四个平台**（复用已有的 Upload-Post 集成）；未配置时会生成发布回执而不真正上传。
+- **Telegram 长轮询**，不需要公网 IP、域名或证书。
+
+**从 [START-HERE.md](START-HERE.md) 开始** · 账号连接见 [CONNECTING.md](CONNECTING.md) · 无人值守见 [AUTOPILOT.md](AUTOPILOT.md) · 自己的域名/链接见 [DEPLOY.md](DEPLOY.md) · 完整参考见 [docs/bot.md](docs/bot.md)。
+
+---
+
 ## 功能特性 🎯
 
 ### 创作入口与工作流

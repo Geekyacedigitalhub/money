@@ -276,6 +276,13 @@ def get_application() -> FastAPI:
         lifespan=application_lifespan,
     )
     instance.include_router(root_api_router)
+
+    # 社交发布机器人：/bot 是聊天页面，/api/bot 是它的接口。必须在下面的
+    # 根路径 StaticFiles 之前注册，否则挂载点会把这两个前缀吞掉。
+    from app.bot.web import router as bot_router
+
+    instance.include_router(bot_router)
+
     instance.add_exception_handler(HttpException, exception_handler)
     instance.add_exception_handler(RequestValidationError, validation_exception_handler)
     return instance

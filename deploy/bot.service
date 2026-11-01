@@ -1,0 +1,21 @@
+# Run without Docker:
+#   sudo cp deploy/bot.service /etc/systemd/system/post-bot.service
+#   sudo systemctl daemon-reload && sudo systemctl enable --now post-bot
+# Logs: journalctl -u post-bot -f
+[Unit]
+Description=MoneyPrinterTurbo post bot + autopilot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ace
+WorkingDirectory=/opt/money
+Environment=MPT_BOT_PUBLIC_URL=https://bot.geekyacedigitalhub.com
+Environment=CORS_ALLOWED_ORIGINS=https://bot.geekyacedigitalhub.com
+ExecStart=/opt/money/.venv/bin/python -m app.bot.cli serve --autopilot --trust-proxy --port 8080
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

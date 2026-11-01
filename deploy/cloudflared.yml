@@ -1,0 +1,19 @@
+# Free alternative to a VPS: expose a machine you already leave on.
+#
+#   cloudflared tunnel login
+#   cloudflared tunnel create post-bot
+#   cloudflared tunnel route dns post-bot bot.geekyacedigitalhub.com
+#   sudo cp deploy/cloudflared.yml /etc/cloudflared/config.yml
+#   sudo cloudflared service install
+#
+# Then run the bot locally on 8080 (no --trust-proxy needed unless you add auth).
+tunnel: post-bot
+credentials-file: /root/.cloudflared/post-bot.json
+
+ingress:
+  - hostname: bot.geekyacedigitalhub.com
+    service: http://localhost:8080
+    originRequest:
+      connectTimeout: 30s
+      noTLSVerify: true
+  - service: http_status:404
