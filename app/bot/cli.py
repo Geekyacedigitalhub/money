@@ -64,6 +64,25 @@ def cmd_status(_: argparse.Namespace) -> int:
     if settings.allowed_users:
         print("allow-list      : " + ", ".join(settings.allowed_users))
     print()
+    try:
+        from app.bot.autopilot import Autopilot
+
+        status = Autopilot(settings=settings).status()
+        plan = (
+            f"every {status['interval_minutes']} min"
+            if status["interval_minutes"]
+            else "at " + ", ".join(status["times"])
+        )
+        print(
+            f"autopilot       : {status['mode']} · {plan} · "
+            f"{status['runs_today']}/{status['max_per_day']} today"
+            + (" · PAUSED" if status["paused"] else "")
+        )
+        if status["next_run"]:
+            print(f"next run        : {status['next_run']} ({status['timezone']})")
+    except Exception as exc:  # noqa: BLE001 - status 不应因为自动运营出错而失败
+        print(f"autopilot       : unavailable ({exc})")
+    print()
     print("Open the chat UI at  http://127.0.0.1:8080/bot  after `serve`.")
     return 0
 
@@ -87,6 +106,19 @@ def cmd_serve(args: argparse.Namespace) -> int:
     host = args.host or os.getenv("MPT_BOT_HOST", "0.0.0.0")
     port = int(args.port or os.getenv("MPT_BOT_PORT", "8080"))
 
+    if getattr(args, "autopilot", False) or settings.autopilot_enabled:
+        from app.bot.autopilot import Autopilot
+
+        auto = Autopilot(settings=settings, publish=settings.autopilot_publish)
+        _show_info_logs()
+        auto.start_background()
+        status = auto.status()
+        print(
+            f"Autopilot started ({status['mode']}, max {status['max_per_day']}/day, "
+            f"next {status['next_run'] or 'paused'})",
+            flush=True,
+        )
+
     if args.telegram:
         token = settings.telegram_token
         if not token:
@@ -102,7 +134,7 @@ def cmd_serve(args: argparse.Namespace) -> int:
         threading_import = __import__("threading")
         worker = threading_import.Thread(target=bot.run, name="mpt-bot-telegram", daemon=True)
         worker.start()
-        print("Telegram polling started (see logs).")
+        print("Telegram polling started (see logs).", flush=True)
 
     import uvicorn
 
@@ -111,11 +143,11 @@ def cmd_serve(args: argparse.Namespace) -> int:
         # 媒体依赖，因此在 512MB 的小机器上也能启动；需要真实生成视频时再用完整
         # 模式（``serve`` 不带 --bot-only）。
         app_target = _build_bot_only_app()
-        print("Mode: bot-only (no WebUI / REST API)")
+        print("Mode: bot-only (no WebUI / REST API)", flush=True)
     else:
         app_target = "app.asgi:app"
 
-    print(f"Chat UI  →  http://127.0.0.1:{port}/bot")
+    print(f"Chat UI  →  http://127.0.0.1:{port}/bot", flush=True)
     if not args.bot_only:
         print(f"API docs →  http://127.0.0.1:{port}/docs")
     uvicorn.run(
@@ -221,6 +253,123 @@ def cmd_demo(args: argparse.Namespace) -> int:
     return 0
 
 
+def _show_info_logs() -> None:
+    """常驻模式下把 INFO 日志放出来，否则用户看不到“下一次什么时候跑”。"""
+    try:
+        logger.remove()
+        logger.add(sys.stderr, level="INFO")
+    except Exception:  # noqa: BLE001, S110 - 日志系统不可用时保持默认
+        pass
+
+
+def _autopilot(args: argparse.Namespace):
+    from app.bot.autopilot import Autopilot
+
+    settings = load_settings()
+    overrides: dict = {}
+    if args.interval is not None:
+        overrides["autopilot_interval_minutes"] = max(0, args.interval)
+    if args.max_per_day is not None:
+        overrides["autopilot_max_per_day"] = max(1, args.max_per_day)
+    if args.topic_file:
+        overrides["autopilot_topics_file"] = args.topic_file
+    if overrides:
+        settings = settings.with_overrides(**overrides)
+
+    return Autopilot(
+        settings=settings,
+        topics_path=args.topic_file,
+        publish=(not args.no_publish) and settings.autopilot_publish,
+        dry_run=args.dry_run,
+    )
+
+
+def cmd_autopilot(args: argparse.Namespace) -> int:
+    """按计划自动生成并发布，直到 Ctrl+C。"""
+    auto = _autopilot(args)
+    if args.pause or args.resume:
+        auto.state.paused = bool(args.pause)
+        auto.save()
+        print("paused" if args.pause else "resumed")
+        return 0
+    status = auto.status()
+
+    if not (args.once or args.topic):
+        plan = (
+            f"every {status['interval_minutes']} minutes"
+            if status["interval_minutes"]
+            else "at " + ", ".join(status["times"])
+        )
+        print(f"Autopilot  ·  {status['mode']}  ·  {plan}  ·  max {status['max_per_day']}/day")
+        print(f"timezone   : {status['timezone']}")
+        print(f"queue      : {status['queue_size']} topics ({'yours' if status['custom_topics'] else 'built-in'})")
+        print(f"next run   : {status['next_run'] or 'paused'}")
+        if status["mode"] == "rehearsal":
+            print()
+            print("REHEARSAL: videos are generated and recorded but NOT published.")
+            blockers = status.get("blockers") or []
+            if blockers:
+                print("To go fully live, fix these:")
+                for item in blockers:
+                    print(f"  • {item['why']}")
+                    print(f"    → {item['fix']}")
+        print()
+        print("Ctrl+C to stop.")
+
+    if not (args.once or args.topic):
+        _show_info_logs()
+
+    stop = __import__("threading").Event()
+    if args.once or args.topic:
+        result = auto.run_once(args.topic or "")
+        if result.get("skipped"):
+            print(f"skipped: {result.get('reason')}")
+            return 0
+        if not result.get("ok"):
+            print(f"❌ {result.get('error') or 'failed'}", file=sys.stderr)
+            return 1
+        print(f"topic   : {result.get('topic')}")
+        print(f"video   : {result.get('video')}")
+        if result.get("published"):
+            for platform, value in (result.get("results") or {}).items():
+                print(f"  {platform}: {value}")
+        else:
+            print(f"publish : no ({result.get('note') or 'not published'})")
+        return 0
+
+    try:
+        auto.loop(stop)
+    except KeyboardInterrupt:
+        stop.set()
+        print("\nstopped")
+    return 0
+
+
+def cmd_topics(args: argparse.Namespace) -> int:
+    """管理自动运营的选题清单。"""
+    auto = _autopilot(args)
+    action = args.action
+    if action == "add":
+        added = auto.add_topics(args.topic or [])
+        print(f"saved. {added} topics queued at {auto.topics_path}")
+    elif action == "remove":
+        remaining = auto.remove_topic(int(args.index or 0))
+        print(f"removed. {remaining} left")
+    elif action == "clear":
+        open(auto.topics_path, "w", encoding="utf-8").close()
+        print("cleared — the built-in rotating topics will be used again")
+
+    pool = auto.topics()
+    source = "your file" if auto._read_topic_file() else "built-in rotation"
+    print(f"\n{len(pool)} topics ({source}):")
+    for index, topic in enumerate(pool[:40], start=1):
+        marker = "→" if topic == auto.next_topic() and auto._read_topic_file() else " "
+        print(f" {marker} {index:2d}. {topic}")
+    if len(pool) > 40:
+        print(f"    … and {len(pool) - 40} more")
+    return 0
+
+
 def cmd_doctor(args: argparse.Namespace) -> int:
     """检查每个平台到底连上了没有，可选发一条真实的测试帖。"""
     settings = load_settings()
@@ -273,6 +422,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="serve only the chat UI, without the WebUI / REST API stack (much lighter)",
     )
     serve.add_argument(
+        "--autopilot",
+        action="store_true",
+        help="also run the scheduler that generates and posts on its own",
+    )
+    serve.add_argument(
         "--trust-proxy",
         action="store_true",
         help="trust X-Forwarded-* headers (needed behind a reverse proxy or sandbox preview)",
@@ -294,6 +448,42 @@ def build_parser() -> argparse.ArgumentParser:
         help="also publish a short test clip to one platform (tiktok/instagram/facebook/youtube)",
     )
     doctor_cmd.set_defaults(func=cmd_doctor)
+
+    auto = sub.add_parser(
+        "autopilot", help="generate and publish on a schedule (runs until Ctrl+C)"
+    )
+    auto.add_argument("--once", action="store_true", help="run one cycle and exit")
+    auto.add_argument("--topic", default="", help="use this topic for this cycle")
+    auto.add_argument(
+        "--interval",
+        type=int,
+        default=None,
+        help="minutes between posts (0 = use autopilot_times)",
+    )
+    auto.add_argument("--max-per-day", type=int, default=None, help="daily cap")
+    auto.add_argument("--topic-file", default="", help="path to a topics file")
+    auto.add_argument("--pause", action="store_true", help="stop the schedule")
+    auto.add_argument("--resume", action="store_true", help="restart the schedule")
+    auto.add_argument(
+        "--no-publish", action="store_true", help="generate only, never publish"
+    )
+    auto.add_argument(
+        "--dry-run", action="store_true", help="force rehearsal mode even if configured"
+    )
+    auto.set_defaults(func=cmd_autopilot)
+
+    topics = sub.add_parser("topics", help="manage the autopilot topic queue")
+    topics.add_argument(
+        "action", nargs="?", default="list", choices=["list", "add", "remove", "clear"]
+    )
+    topics.add_argument("topic", nargs="*", help="topic text for 'add'")
+    topics.add_argument("--index", type=int, default=None, help="1-based index for 'remove'")
+    topics.add_argument("--topic-file", default="", help="path to a topics file")
+    topics.add_argument("--interval", type=int, default=None)
+    topics.add_argument("--max-per-day", type=int, default=None)
+    topics.add_argument("--no-publish", action="store_true")
+    topics.add_argument("--dry-run", action="store_true")
+    topics.set_defaults(func=cmd_topics)
 
     ask = sub.add_parser("ask", help="generate one video from a topic")
     ask.add_argument("topic")

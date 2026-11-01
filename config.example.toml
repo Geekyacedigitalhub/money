@@ -883,6 +883,20 @@ default_platforms = ["tiktok", "instagram", "facebook", "youtube"]
 # before anything is published. true = publish immediately after rendering.
 auto_publish = false
 
+# --- autopilot: publish without touching anything -------------------------
+# With this on, `serve` also runs a scheduler that picks a topic, renders the
+# video and publishes it. No taps. Nothing goes out until the blockers listed by
+# `cli autopilot` are fixed (real keys + Upload-Post).
+autopilot_enabled = false
+autopilot_times = ["08:00", "13:00", "19:00"]   # Africa/Lagos local times
+autopilot_interval_minutes = 0                   # >0 = every N minutes instead
+autopilot_max_per_day = 3                        # hard ceiling
+autopilot_min_gap_minutes = 90                   # never two posts back-to-back
+autopilot_niche = "personal finance for beginners"
+autopilot_timezone = "UTC"
+autopilot_publish = true                         # false = generate, never post
+# autopilot_topics_file = ""                    # default: storage/bot/autopilot/topics.txt
+
 # --- video defaults -------------------------------------------------------
 video_aspect = "9:16"                  # "9:16", "16:9", "1:1"
 video_source = "pexels"                # pexels / pixabay / coverr / local / ...

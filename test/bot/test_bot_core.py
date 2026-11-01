@@ -298,3 +298,36 @@ def test_delivery_guide_mentions_tiktok_minute_rule():
     text = delivery.format_guides()
     assert "TikTok" in text
     assert "Nigeria" in text
+
+
+def test_auto_command_shows_the_schedule(settings):
+    core = make_core(settings)
+    replies = core.handle(ChatMessage(chat_id="auto-chat", user_id="auto-chat", text="/auto"))
+    text = replies[0].text
+    assert "Autopilot" in text
+    assert "Today:" in text
+    labels = [button.label for row in replies[0].buttons or [] for button in row]
+    assert any("Run one now" in label for label in labels)
+    assert any("Pause" in label for label in labels)
+
+
+def test_auto_pause_and_resume_are_persisted(tmp_path, settings):
+    from app.bot import autopilot as autopilot_service
+
+    state = tmp_path / "state.json"
+    original = autopilot_service.Autopilot.__init__
+
+    def patched(self, *args, **kwargs):
+        kwargs.setdefault("state_path", str(state))
+        kwargs.setdefault("topics_path", str(tmp_path / "topics.txt"))
+        original(self, *args, **kwargs)
+
+    autopilot_service.Autopilot.__init__ = patched
+    try:
+        core = make_core(settings)
+        core.handle(ChatMessage(chat_id="c", user_id="c", callback="auto:pause"))
+        assert core.autopilot().state.paused is True
+        core.handle(ChatMessage(chat_id="c", user_id="c", callback="auto:resume"))
+        assert core.autopilot().state.paused is False
+    finally:
+        autopilot_service.Autopilot.__init__ = original

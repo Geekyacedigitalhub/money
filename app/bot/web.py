@@ -15,7 +15,7 @@ import secrets
 from pathlib import Path
 from typing import Annotated, Any
 
-from fastapi import APIRouter, File, HTTPException, UploadFile
+from fastapi import APIRouter, Body, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse
 from loguru import logger
 
@@ -133,6 +133,42 @@ def bot_session(chat_id: str = "") -> dict[str, Any]:
             for item in ALL_PLATFORMS
         ],
     }
+
+
+@router.get("/api/bot/autopilot")
+def bot_autopilot() -> dict[str, Any]:
+    """自动运营的排期、队列和最近结果，供网页端查看。"""
+    from app.bot.autopilot import Autopilot
+
+    core = _core()
+    try:
+        return Autopilot(core=core, settings=core.settings).status()
+    except Exception as exc:  # noqa: BLE001 - 状态不可读时也给一个可用响应
+        return {"error": str(exc)}
+
+
+@router.post("/api/bot/autopilot/{action}")
+def bot_autopilot_action(
+    action: str, payload: Annotated[dict[str, Any] | None, Body()] = None
+) -> dict[str, Any]:
+    """暂停 / 恢复；``run`` 立即跑一轮（后台执行，不阻塞请求）。"""
+    from app.bot.autopilot import Autopilot
+
+    core = _core()
+    auto = Autopilot(core=core, settings=core.settings)
+    if action == "pause":
+        auto.state.paused = True
+        auto.save()
+    elif action == "resume":
+        auto.state.paused = False
+        auto.save()
+    elif action == "run":
+        # 结果要回到发起者的聊天窗口，所以带上 chat_id；页面会轮询 feed。
+        chat_id = str((payload or {}).get("chat_id") or "web")
+        core._start_autopilot_run(chat_id)
+    else:
+        raise HTTPException(status_code=400, detail=f"unknown action: {action}")
+    return auto.status()
 
 
 @router.get("/api/bot/connections")

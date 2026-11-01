@@ -62,6 +62,18 @@ def _as_platform_list(value: Any, default: list[str]) -> list[str]:
     return [item.value for item in sorted(found, key=order.get)]
 
 
+def _as_times(value: Any, default: tuple[str, ...]) -> tuple[str, ...]:
+    """把 ``"08:00, 19:30"`` 或列表统一成 ``("08:00", "19:30")``。"""
+    if isinstance(value, str):
+        items = [part.strip() for part in value.replace(";", ",").split(",")]
+    elif isinstance(value, (list, tuple, set)):
+        items = [str(part).strip() for part in value]
+    else:
+        items = []
+    valid = [item for item in items if ":" in item and item]
+    return tuple(valid) or default
+
+
 @dataclass(frozen=True)
 class BotSettings:
     """机器人运行参数（不可变，便于安全地跨线程传递）。"""
@@ -102,6 +114,23 @@ class BotSettings:
     max_upload_mb: int = 200
     # 发布时每个平台单独请求（各自使用自己的文案）。
     per_platform_captions: bool = True
+    # --- 自动运营（autopilot）------------------------------------------
+    # 常驻模式：按计划自动选题、生成、发布，不需要人一条条点。
+    autopilot_enabled: bool = False
+    # 0 表示按 autopilot_times 里的固定时刻跑；>0 表示每隔 N 分钟跑一次。
+    autopilot_interval_minutes: int = 0
+    autopilot_times: tuple[str, ...] = ("08:00", "13:00", "19:00")
+    autopilot_max_per_day: int = 3
+    # 两条之间的最小间隔，避免进程重启后立刻又发一条。
+    autopilot_min_gap_minutes: int = 90
+    # 自动选题的方向。写清楚给谁看、解决什么问题，标题才不会空泛。
+    autopilot_niche: str = ""
+    # 留空 = 系统本地时区。
+    autopilot_timezone: str = ""
+    # 生成后是否自动发布。false = 只生成，留着人工确认。
+    autopilot_publish: bool = True
+    # 自己的选题清单；留空 = storage/bot/autopilot/topics.txt
+    autopilot_topics_file: str = ""
 
     @property
     def is_demo(self) -> bool:
@@ -195,6 +224,28 @@ def load_settings() -> BotSettings:
         per_platform_captions=_as_bool(
             raw.get("per_platform_captions"), defaults.per_platform_captions
         ),
+        autopilot_enabled=_as_bool(
+            raw.get("autopilot_enabled"), defaults.autopilot_enabled
+        ),
+        autopilot_interval_minutes=max(
+            0, _as_int(raw.get("autopilot_interval_minutes"), 0)
+        ),
+        autopilot_times=_as_times(raw.get("autopilot_times"), defaults.autopilot_times),
+        autopilot_max_per_day=max(
+            1, _as_int(raw.get("autopilot_max_per_day"), defaults.autopilot_max_per_day)
+        ),
+        autopilot_min_gap_minutes=max(
+            0,
+            _as_int(
+                raw.get("autopilot_min_gap_minutes"), defaults.autopilot_min_gap_minutes
+            ),
+        ),
+        autopilot_niche=str(raw.get("autopilot_niche") or "").strip(),
+        autopilot_timezone=str(raw.get("autopilot_timezone") or "").strip(),
+        autopilot_publish=_as_bool(
+            raw.get("autopilot_publish"), defaults.autopilot_publish
+        ),
+        autopilot_topics_file=str(raw.get("autopilot_topics_file") or "").strip(),
     )
 
     # 环境变量优先，方便容器化部署。

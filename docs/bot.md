@@ -65,6 +65,7 @@ platform sections and a **🧪 Simulate publish** button.
 | `/cancel` | Stop the running job |
 | `/jobs` | Recent job history |
 | `/connect` | Check every platform's real connection state, with test-post buttons |
+| `/auto` | Autopilot schedule: next topic, next run, pause/resume, run one now |
 | `/mode` | Demo vs live, and whether publishing is real |
 | `/new` | Start a fresh video |
 
@@ -165,6 +166,25 @@ error code: [CONNECTING.md](../CONNECTING.md).
 | YouTube | A channel with phone verification and 2-step verification |
 
 ---
+
+### Autopilot — no manual steps
+
+`serve --autopilot` (or `autopilot_enabled = true`) starts `app/bot/autopilot.py`:
+a single serial worker that picks a topic, calls `BotCore` exactly like a user
+would, then publishes the result.
+
+```bash
+python -m app.bot.cli autopilot --once          # one cycle
+python -m app.bot.cli autopilot                 # run the schedule
+python -m app.bot.cli autopilot --pause|--resume
+python -m app.bot.cli topics add "…"            # own queue
+```
+
+State lives in `storage/bot/autopilot/state.json` (cursor, daily count, last 60
+runs, paused flag), so a restart neither re-posts nor resets the cap. Rehearsal vs
+live is decided by `preflight()`: demo mode, missing LLM/footage keys, or
+unconfigured Upload-Post all force rehearsal, and a demo render is never published.
+Full guide: [AUTOPILOT.md](../AUTOPILOT.md).
 
 ## 4. Telegram
 

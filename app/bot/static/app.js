@@ -385,6 +385,72 @@
     uploadFile(file);
   });
 
+  async function openAutopilot() {
+    const sheet = $("guidesSheet");
+    sheet.hidden = false;
+    const body = $("guidesBody");
+    body.innerHTML = "Loading the schedule…";
+    try {
+      const data = await api("/api/bot/autopilot");
+      if (data.error) throw new Error(data.error);
+      const plan = data.interval_minutes
+        ? `every ${data.interval_minutes} minutes`
+        : `at ${(data.times || []).join(", ")}`;
+      const recent = (data.runs || [])
+        .slice()
+        .reverse()
+        .map((run) => {
+          const icon = run.published ? "✅" : run.ok ? "🎬" : "❌";
+          return `<div class="guide"><h4>${icon} ${esc(run.topic || "—")}</h4>
+                  <dl><dd>${esc(run.at || "")}${
+                    run.error ? ` · ${esc(run.error)}` : ""
+                  }</dd></dl></div>`;
+        })
+        .join("");
+      body.innerHTML =
+        `<div class="guide"><h4>${data.paused ? "⏸ Paused" : "🤖 Running"} · ${esc(data.mode)}</h4>
+           <dl><dt>Plan</dt><dd>${esc(plan)} · ${esc(data.timezone)}</dd>
+               <dt>Today</dt><dd>${data.runs_today}/${data.max_per_day}</dd>
+               <dt>Next run</dt><dd>${esc(data.next_run || "paused")}</dd>
+               <dt>Next topic</dt><dd>${esc(data.next_topic || "—")}</dd>
+               <dt>Queue</dt><dd>${data.queue_size} topics (${
+                 data.custom_topics ? "your list" : "built-in rotation"
+               })</dd></dl>
+           <div class="tools" style="margin-top:10px">
+             <button class="ghost" id="autoRun">▶️ Run one now</button>
+             <button class="ghost" id="autoToggle">${
+               data.paused ? "▶️ Resume" : "⏸ Pause"
+             }</button>
+           </div></div>` + recent;
+      $("autoRun").addEventListener("click", () => autoAction("run"));
+      $("autoToggle").addEventListener("click", () =>
+        autoAction(data.paused ? "resume" : "pause"),
+      );
+    } catch (error) {
+      body.textContent = error.message;
+    }
+  }
+
+  async function autoAction(action) {
+    try {
+      await api(`/api/bot/autopilot/${action}`, {
+        method: "POST",
+        body: JSON.stringify({ chat_id: chatId }),
+      });
+    } catch (error) {
+      $("guidesBody").textContent = error.message;
+      return;
+    }
+    if (action === "run") {
+      $("guidesBody").innerHTML =
+        "▶️ Running one cycle in the background. The result appears in the chat.";
+      setTimeout(openAutopilot, 4000);
+      return;
+    }
+    openAutopilot();
+  }
+
+  $("autoBtn").addEventListener("click", openAutopilot);
   $("connBtn").addEventListener("click", openConnections);
   $("guidesBtn").addEventListener("click", openGuides);
   $("guidesClose").addEventListener("click", () => ($("guidesSheet").hidden = true));

@@ -24,6 +24,7 @@ from app.bot import publisher as publisher_service
 from app.bot.config import BotSettings, load_settings, publish_account_ready
 from app.bot.models import (
     ALL_PLATFORMS,
+    SYSTEM_USER,
     Button,
     Caption,
     ChatMessage,
@@ -58,6 +59,7 @@ stock footage, and post it to Facebook, YouTube, TikTok and Instagram.
 /caption <text> — override the caption text
 /cancel — stop the current job
 /connect — check which platforms are really connected
+/auto — what the scheduler will post next (and pause it)
 /how — what each platform accepts (length, account, payouts)
 /mode — show demo / live status
 
@@ -183,12 +185,15 @@ class BotCore:
 
     def handle(self, message: ChatMessage) -> list[Reply]:
         """处理一条消息，立即返回需要同步发送的回复。"""
-        if not self.settings.allows(message.user_id or message.chat_id):
+        user_id = message.user_id or message.chat_id
+        # 自动运营是机器人自己，不受 allow-list 限制（否则一旦设置白名单，
+        # 定时任务就会被自己的白名单挡在门外）。
+        if user_id != SYSTEM_USER and not self.settings.allows(user_id):
             return [
                 Reply(
                     text=(
                         "🚫 This bot is restricted to an allow-list.\n"
-                        f"Your user id is `{message.user_id or message.chat_id}` — "
+                        f"Your user id is `{user_id}` — "
                         "add it to [bot] allowed_users in config.toml."
                     )
                 )
@@ -246,6 +251,8 @@ class BotCore:
             return [self._jobs_reply()]
         if command in {"connect", "connections", "check"}:
             return [self._connect_reply()]
+        if command in {"auto", "autopilot", "schedule"}:
+            return [self._autopilot_reply()]
         if command in {"how", "rules", "limits"}:
             from app.bot import delivery
 
@@ -630,6 +637,9 @@ class BotCore:
             ]
             return [Reply(text="\n".join(lines), buttons=self._platform_keyboard(session))]
 
+        if kind == "auto":
+            return self._autopilot_action(payload, session.chat_id)
+
         if kind == "conn":
             # 只有用户明确点“重新检查”才花掉一次 API 调用。
             from app.bot import doctor
@@ -825,6 +835,133 @@ class BotCore:
         with self._lock:
             self._active_by_chat.pop(session.chat_id, None)
         return Reply(text="🛑 Cancelled.")
+
+    # ------------------------------------------------------------------
+    # 自动运营
+    # ------------------------------------------------------------------
+
+    def autopilot(self):
+        from app.bot.autopilot import Autopilot
+
+        return Autopilot(core=self, settings=self.settings)
+
+    def _autopilot_reply(self) -> Reply:
+        try:
+            auto = self.autopilot()
+            status = auto.status()
+        except Exception as exc:  # noqa: BLE001 - 状态读取失败不该让聊天卡死
+            return Reply(text=f"⚠️ Autopilot unavailable: {exc}")
+
+        plan = (
+            f"every {status['interval_minutes']} min"
+            if status["interval_minutes"]
+            else "at " + ", ".join(status["times"])
+        )
+        lines = [
+            f"🤖 **Autopilot** — {status['mode']}"
+            + (" · ⏸ paused" if status["paused"] else ""),
+            f"Plan: {plan} ({status['timezone']})",
+            f"Today: {status['runs_today']}/{status['max_per_day']}",
+            f"Next: {status['next_run'] or 'paused'}",
+            "Queue: {} topics ({})".format(
+                status["queue_size"],
+                "your list" if status["custom_topics"] else "built-in rotation",
+            ),
+        ]
+        if status["next_topic"]:
+            lines.append(f"Next topic: {status['next_topic']}")
+        if status["runs"]:
+            lines.append("")
+            lines.append("Recent:")
+            for run in reversed(status["runs"][-3:]):
+                icon = "✅" if run.get("published") else ("🎬" if run.get("ok") else "❌")
+                lines.append(f"{icon} {run.get('topic', '')[:48]}")
+        if status["mode"] == "rehearsal":
+            lines.append("")
+            lines.append("_Rehearsal: renders and records, never posts._")
+            for blocker in (status.get("blockers") or [])[:3]:
+                lines.append(f"• {blocker['why']}")
+            if status.get("blockers"):
+                lines.append("Send /auto again after fixing them.")
+        buttons = [
+            [Button(label="▶️ Run one now", data="auto:run")],
+            [
+                Button(
+                    label="▶️ Resume" if status["paused"] else "⏸ Pause",
+                    data="auto:resume" if status["paused"] else "auto:pause",
+                ),
+                Button(label="🔄 Refresh", data="auto:status"),
+            ],
+        ]
+        return Reply(text="\n".join(lines), buttons=buttons)
+
+    def _autopilot_action(self, action: str, chat_id: str = "autopilot") -> list[Reply]:
+        auto = self.autopilot()
+        if action == "pause":
+            auto.state.paused = True
+            auto.save()
+            return [Reply(text="⏸ Autopilot paused. Tap Resume or send /auto.")]
+        if action == "resume":
+            auto.state.paused = False
+            auto.save()
+            return [self._autopilot_reply()]
+        if action == "run":
+            return self._start_autopilot_run(chat_id)
+        return [self._autopilot_reply()]
+
+    def _start_autopilot_run(self, chat_id: str) -> list[Reply]:
+        """后台跑一轮，跑完把结果发回聊天——生成要几分钟，不能阻塞回复。"""
+
+        def _run() -> None:
+            auto = self.autopilot()
+            try:
+                result = auto.run_once()
+            except Exception as exc:  # noqa: BLE001
+                logger.exception(f"autopilot run failed: {exc}")
+                self._emit(chat_id, Reply(text=f"❌ Autopilot failed: {exc}"))
+                return
+            if result.get("skipped"):
+                self._emit(
+                    chat_id,
+                    Reply(
+                        text=f"⏭ Skipped: {result.get('reason')}",
+                        buttons=[[Button(label="🔄 Status", data="auto:status")]],
+                    ),
+                )
+                return
+            if not result.get("ok"):
+                self._emit(
+                    chat_id,
+                    Reply(text=f"❌ Autopilot: {result.get('error') or 'failed'}"),
+                )
+                return
+            lines = [f"🎬 {result.get('topic')}", ""]
+            if result.get("published"):
+                lines.append("✅ Published:")
+                for platform, value in (result.get("results") or {}).items():
+                    lines.append(f"• {platform}: {value}")
+            else:
+                lines.append("🎬 Video ready, not published:")
+                lines.append(result.get("note") or "rehearsal mode")
+            self._emit(
+                chat_id,
+                Reply(
+                    text="\n".join(lines),
+                    video=result.get("video") or "",
+                    job_id=result.get("job_id") or None,
+                    buttons=[[Button(label="🤖 Autopilot", data="auto:status")]],
+                ),
+            )
+
+        threading.Thread(target=_run, name="mpt-bot-auto-run", daemon=True).start()
+        return [
+            Reply(
+                text=(
+                    "🤖 Running one autopilot cycle…\n"
+                    "It will send the video here when it's done."
+                )
+            )
+        ]
 
     def _connect_reply(self) -> Reply:
         """逐平台检查连接状态，并给出可直接点的测试按钮。"""

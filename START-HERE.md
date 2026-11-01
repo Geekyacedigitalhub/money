@@ -195,6 +195,44 @@ public IP, domain or certificate needed.
 
 ---
 
+## Step 6 — Hands off (already configured)
+
+You do not have to send topics one by one. A scheduler is built in and enabled:
+
+```toml
+[bot]
+autopilot_enabled = true
+autopilot_times = ["08:00", "13:00", "19:00"]   # Lagos time
+autopilot_max_per_day = 3
+autopilot_niche = "online income with AI tools in Nigeria"
+```
+
+Start everything with one command:
+
+```bash
+python -m app.bot.cli serve
+```
+
+It picks the next topic, writes the script, voices it, cuts the video and publishes
+— three times a day — then logs the result and moves on.
+
+**Right now it runs in rehearsal**: your `demo_mode` is still `true` and no LLM /
+Pexels / Upload-Post keys are set, so it renders and records but never posts. That
+is intentional. `python -m app.bot.cli autopilot` lists the exact four blockers and
+how to fix each.
+
+Control it from chat with **`/auto`** or the **🤖** button: status, *Run one now*,
+*Pause*. Add your own topics with `python -m app.bot.cli topics add "…"`.
+
+> **Free-plan reality check:** 3 posts/day is ~90/month, but Upload-Post Free gives
+> **10 API calls per cycle**. Everything renders; only publishing stops after 10.
+> Either set `autopilot_max_per_day = 1` and top up, or upgrade before scaling.
+
+Full guide, including running it 24/7 with systemd or cron:
+[AUTOPILOT.md](AUTOPILOT.md).
+
+---
+
 ## What you just built
 
 | | |

@@ -78,6 +78,10 @@ _EMOJI = {
 
 ALL_PLATFORMS = tuple(Platform)
 
+# 自动运营（autopilot）用这个身份提交任务：它需要通过 allow-list 检查，
+# 但不应该和任何真实用户混在一起。
+SYSTEM_USER = "__autopilot__"
+
 
 def parse_platform(value: Any) -> Platform | None:
     """把用户输入或配置值转成 ``Platform``，无法识别时返回 ``None``。"""
