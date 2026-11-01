@@ -562,8 +562,9 @@ def preflight() -> list[dict[str, str]]:
                 "key": "llm",
                 "why": "no LLM key: it cannot write a script",
                 "fix": (
-                    f"set [app] {key_field or 'llm_provider + <provider>_api_key'} "
-                    "(Moonshot, OpenAI, Gemini… all work)"
+                    f"set [app] {key_field or 'llm_provider + <provider>_api_key'} — "
+                    "a free Gemini key (aistudio.google.com/app/apikey) works, or "
+                    "run Ollama locally with llm_provider = \"ollama\" and pay nothing"
                 ),
             }
         )
@@ -576,7 +577,10 @@ def preflight() -> list[dict[str, str]]:
             {
                 "key": "footage",
                 "why": "no stock-footage key: there is nothing to put behind the voice",
-                "fix": "get a free key at https://www.pexels.com/api/ and paste it into [app] pexels_api_keys",
+                "fix": (
+                    "get the free Pexels key at https://www.pexels.com/api/ and put "
+                    "it in [app] pexels_api_keys"
+                ),
             }
         )
 
