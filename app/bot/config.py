@@ -62,6 +62,30 @@ def _as_platform_list(value: Any, default: list[str]) -> list[str]:
     return [item.value for item in sorted(found, key=order.get)]
 
 
+# 这些域名只属于某次运行/某个沙箱，随时会失效。它们可以出现在浏览器地址栏里，
+# 但绝不能当成“用户自己的链接”发出去。
+_TEMPORARY_SUFFIXES = (
+    ".e2b.app",
+    ".ngrok.io",
+    ".ngrok-free.app",
+    ".trycloudflare.com",
+    ".loca.lt",
+    ".serveo.net",
+    ".vercel.app",
+)
+
+
+def is_temporary_url(url: str) -> bool:
+    """判断一个地址是不是临时隧道/预览域名（会过期，不能当正式链接）。"""
+    text = str(url or "").strip().lower()
+    if not text:
+        return True
+    host = text.split("//", 1)[-1].split("/", 1)[0].split(":", 1)[0]
+    if host in {"localhost", "127.0.0.1", "0.0.0.0", "[::1]"}:
+        return True
+    return any(host.endswith(suffix) for suffix in _TEMPORARY_SUFFIXES)
+
+
 def _as_url(value: Any) -> str:
     """只接受 http(s) 地址，去掉结尾斜杠；其它输入当成“没配置”。"""
     text = str(value or "").strip().rstrip("/")

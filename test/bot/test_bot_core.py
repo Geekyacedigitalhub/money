@@ -344,7 +344,7 @@ def test_link_command_without_a_url_explains_how_to_get_one(settings):
     core = make_core(settings.with_overrides(public_url=""))
     reply = core.handle(ChatMessage(chat_id="c", user_id="c", text="/link"))[0]
     assert "DEPLOY.md" in reply.text
-    assert "cloudflared" in reply.text
+    assert "setup-vps.sh" in reply.text
 
 
 def test_public_url_is_normalised_from_config(monkeypatch):
@@ -363,3 +363,30 @@ def test_public_url_rejects_junk(monkeypatch):
     from app.bot.config import load_settings
 
     assert load_settings().public_url == ""
+
+
+def test_link_command_refuses_to_hand_out_a_sandbox_preview(settings):
+    """临时预览域名不是“用户的链接”，不能包装成正式地址。"""
+    core = make_core(
+        settings.with_overrides(public_url="https://8080-abc123.e2b.app")
+    )
+    text = core.handle(ChatMessage(chat_id="c", user_id="c", text="/link"))[0].text
+    assert "No permanent link yet" in text
+    assert "setup-vps.sh" in text
+    assert "https://8080-abc123.e2b.app/bot" not in text
+
+
+def test_link_command_rejects_localhost_too(settings):
+    core = make_core(settings.with_overrides(public_url="http://127.0.0.1:8080"))
+    text = core.handle(ChatMessage(chat_id="c", user_id="c", text="/link"))[0].text
+    assert "No permanent link yet" in text
+
+
+def test_temporary_host_detection():
+    from app.bot.config import is_temporary_url
+
+    assert is_temporary_url("https://x.e2b.app")
+    assert is_temporary_url("https://foo.trycloudflare.com")
+    assert is_temporary_url("http://localhost:8080")
+    assert not is_temporary_url("https://bot.geekyacedigitalhub.com")
+    assert not is_temporary_url("https://money.example.org")

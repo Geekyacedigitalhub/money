@@ -61,7 +61,15 @@ def cmd_status(_: argparse.Namespace) -> int:
         + ("LIVE via upload-post" if ready else f"SIMULATED ({reason})")
     )
     print("default targets : " + ", ".join(p.value for p in settings.platforms))
-    print("public link     : " + (settings.public_url or "(not set — see DEPLOY.md)"))
+    from app.bot.config import is_temporary_url
+
+    if not settings.public_url:
+        link_note = "(not set — see DEPLOY.md)"
+    elif is_temporary_url(settings.public_url):
+        link_note = f"{settings.public_url}  ← temporary preview, NOT your link"
+    else:
+        link_note = settings.public_url
+    print("public link     : " + link_note)
     if settings.allowed_users:
         print("allow-list      : " + ", ".join(settings.allowed_users))
     print()
