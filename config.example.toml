@@ -887,6 +887,12 @@ auto_publish = false
 # Also settable with MPT_BOT_PUBLIC_URL, which wins over this value.
 # public_url = "https://bot.yourdomain.com"
 
+# How finished videos leave the bot:
+#   "upload_post" = posted automatically (needs an Upload-Post key)
+#   "manual"      = only rendered; `/week` packages them and you upload with the
+#                   platforms' own free schedulers. No card needed. See SCHEDULING.md
+delivery = "upload_post"
+
 # --- autopilot: publish without touching anything -------------------------
 # With this on, `serve` also runs a scheduler that picks a topic, renders the
 # video and publishes it. No taps. Nothing goes out until the blockers listed by

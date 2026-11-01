@@ -62,6 +62,7 @@ stock footage, and post it to Facebook, YouTube, TikTok and Instagram.
 /cancel — stop the current job
 /connect — check which platforms are really connected
 /auto — what the scheduler will post next (and pause it)
+/week — make a batch of videos + captions, ready to schedule by hand
 /link — the address of this bot (open it on your phone)
 /how — what each platform accepts (length, account, payouts)
 /mode — show demo / live status
@@ -258,6 +259,8 @@ class BotCore:
             return [self._autopilot_reply()]
         if command in {"link", "url", "site", "app"}:
             return [self._link_reply()]
+        if command in {"week", "batch"}:
+            return self._start_week(session.chat_id, argument)
         if command in {"how", "rules", "limits"}:
             from app.bot import delivery
 
@@ -840,6 +843,64 @@ class BotCore:
         with self._lock:
             self._active_by_chat.pop(session.chat_id, None)
         return Reply(text="🛑 Cancelled.")
+
+    # ------------------------------------------------------------------
+    # 按周出片（人工上传用）
+    # ------------------------------------------------------------------
+
+    def _start_week(self, chat_id: str, argument: str) -> list[Reply]:
+        """一次做几天的量，打包成 zip，回复下载地址。"""
+        from app.bot import export
+
+        count = 7
+        for token in (argument or "").split():
+            if token.isdigit():
+                count = max(1, min(14, int(token)))
+                break
+
+        def _run() -> None:
+            try:
+                from app.bot.autopilot import Autopilot
+
+                auto = Autopilot(settings=self.settings)
+                pool = auto.topics()
+                start = int(auto.state.cursor) % len(pool) if pool else 0
+                topics = [
+                    pool[(start + index) % len(pool)] for index in range(count)
+                ]
+                result = export.batch_from_topics(self, topics)
+            except Exception as exc:  # noqa: BLE001
+                logger.exception(f"weekly batch failed: {exc}")
+                self._emit(
+                    chat_id, Reply(text=f"❌ Could not build the batch: {exc}")
+                )
+                return
+
+            lines = [
+                f"📦 **{result['count']} videos ready** ({result['name']})",
+            ]
+            if result["failed"]:
+                lines.append(f"⚠️ {result['failed']} failed")
+            lines += [
+                "",
+                "Download the zip, then schedule with the platforms' own",
+                "free tools: Meta Business Suite (IG + FB), YouTube Studio,",
+                "TikTok. Times are in schedule.csv — see SCHEDULING.md.",
+            ]
+            if result["zip"]:
+                lines += ["", f"/api/bot/export/{os.path.basename(result['zip'])}"]
+            self._emit(chat_id, Reply(text="\n".join(lines)))
+
+        threading.Thread(target=_run, name="mpt-bot-week", daemon=True).start()
+        return [
+            Reply(
+                text=(
+                    f"🗓 Making {count} videos for the week.\n"
+                    "This takes a few minutes each — I'll send the download "
+                    "when the batch is ready."
+                )
+            )
+        ]
 
     # ------------------------------------------------------------------
     # 我自己的链接

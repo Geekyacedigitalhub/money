@@ -69,6 +69,11 @@ say so and skip it. It starts working the day you upgrade, with no code change.
 
 ---
 
+> **Doing this without a card?** Then skip steps 3–7 entirely and use
+> [SCHEDULING.md](SCHEDULING.md) instead: make the videos on your own computer with
+> `python -m app.bot.cli week`, then schedule them with Meta Business Suite,
+> YouTube Studio and TikTok. ₦0/month, and TikTok works too.
+
 ## Step 2 — Get the two free keys (10 min, $0)
 
 **Footage (required):**

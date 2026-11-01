@@ -86,6 +86,12 @@ def is_temporary_url(url: str) -> bool:
     return any(host.endswith(suffix) for suffix in _TEMPORARY_SUFFIXES)
 
 
+def _as_delivery(value: Any) -> str:
+    """只接受两种取值；写错时回落到 upload_post，而不是悄悄变成手动。"""
+    text = str(value or "").strip().lower().replace("-", "_")
+    return "manual" if text in {"manual", "hand", "human", "week"} else "upload_post"
+
+
 def _as_url(value: Any) -> str:
     """只接受 http(s) 地址，去掉结尾斜杠；其它输入当成“没配置”。"""
     text = str(value or "").strip().rstrip("/")
@@ -163,6 +169,10 @@ class BotSettings:
     autopilot_publish: bool = True
     # 自己的选题清单；留空 = storage/bot/autopilot/topics.txt
     autopilot_topics_file: str = ""
+    # 成品怎么出去：
+    #   "upload_post" = 机器人直接发（需要 Upload-Post Key）
+    #   "manual"      = 只做视频，用 /week 打包，人工上传到平台自带的免费定时工具
+    delivery: str = "upload_post"
     # 你自己的公开地址（自定义域名 / 隧道 / VPS），用于 /link 和二维码。
     # 留空 = 只显示本机地址。
     public_url: str = ""
@@ -281,6 +291,7 @@ def load_settings() -> BotSettings:
             raw.get("autopilot_publish"), defaults.autopilot_publish
         ),
         autopilot_topics_file=str(raw.get("autopilot_topics_file") or "").strip(),
+        delivery=_as_delivery(raw.get("delivery")),
         # 环境变量优先：容器/云平台用 MPT_BOT_PUBLIC_URL 覆盖挂载进来的配置。
         public_url=_as_url(
             os.getenv("MPT_BOT_PUBLIC_URL") or raw.get("public_url") or ""

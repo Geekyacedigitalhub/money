@@ -373,6 +373,45 @@ def cmd_topics(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_week(args: argparse.Namespace) -> int:
+    """一次做出几天的量，打包成可直接上传的文件夹。"""
+    from app.bot import export
+    from app.bot.autopilot import Autopilot
+    from app.bot.core import build_core
+
+    settings = load_settings()
+    count = max(1, int(args.count))
+
+    topics = list(args.topic or [])
+    if not topics:
+        auto = Autopilot(settings=settings)
+        pool = auto.topics()
+        start = int(auto.state.cursor) % len(pool) if pool else 0
+        topics = [pool[(start + index) % len(pool)] for index in range(count)]
+
+    core = build_core()
+
+    def progress(index: int, total: int, topic: str) -> None:
+        print(f"[{index}/{total}] {topic}", flush=True)
+
+    print(f"Making {len(topics)} video(s). Each one takes a few minutes.\n")
+    result = export.batch_from_topics(core, topics, name=args.name, on_progress=progress)
+
+    print()
+    print(f"✅ {result['count']} video(s) → {result['folder']}")
+    if result["zip"]:
+        print(f"📦 {result['zip']}")
+    if result["failed"]:
+        print(f"⚠️  {result['failed']} failed")
+    print()
+    print("Next: upload them with the platforms' own free schedulers —")
+    print("  Instagram + Facebook  business.facebook.com/latest/scheduler")
+    print("  YouTube               studio.youtube.com")
+    print("  TikTok                tiktok.com/upload")
+    print("Times are in schedule.csv. Walkthrough: SCHEDULING.md")
+    return 0 if result["count"] else 1
+
+
 def cmd_doctor(args: argparse.Namespace) -> int:
     """检查每个平台到底连上了没有，可选发一条真实的测试帖。"""
     settings = load_settings()
@@ -491,6 +530,16 @@ def build_parser() -> argparse.ArgumentParser:
     topics.add_argument("--no-publish", action="store_true")
     topics.add_argument("--dry-run", action="store_true")
     topics.set_defaults(func=cmd_topics)
+
+    week = sub.add_parser(
+        "week", help="make a batch of videos and package them for manual scheduling"
+    )
+    week.add_argument("--count", type=int, default=7, help="how many videos (default 7)")
+    week.add_argument("--name", default="", help="folder/batch name")
+    week.add_argument(
+        "topic", nargs="*", help="explicit topics (default: the autopilot queue)"
+    )
+    week.set_defaults(func=cmd_week)
 
     ask = sub.add_parser("ask", help="generate one video from a topic")
     ask.add_argument("topic")

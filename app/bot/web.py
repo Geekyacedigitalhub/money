@@ -171,6 +171,41 @@ def bot_autopilot_action(
     return auto.status()
 
 
+@router.get("/api/bot/export/{name}")
+def bot_export_download(name: str) -> FileResponse:
+    """下载打包好的一周成品（zip）。人工上传用这个。"""
+    from app.bot import export
+
+    path = export.resolve_zip(name)
+    if not path:
+        raise HTTPException(status_code=404, detail="batch not found")
+    return FileResponse(
+        path, media_type="application/zip", filename=os.path.basename(path)
+    )
+
+
+@router.get("/api/bot/exports")
+def bot_exports() -> dict[str, Any]:
+    """已经打好的包，网页上可以直接列出下载。"""
+    from app.bot import export
+
+    directory = export.exports_dir()
+    items = []
+    for entry in sorted(os.listdir(directory)):
+        if not entry.endswith(".zip"):
+            continue
+        full = os.path.join(directory, entry)
+        items.append(
+            {
+                "name": entry,
+                "url": f"/api/bot/export/{entry}",
+                "size_mb": round(os.path.getsize(full) / (1024 * 1024), 1),
+                "created": int(os.path.getmtime(full)),
+            }
+        )
+    return {"exports": items[-20:]}
+
+
 @router.get("/api/bot/connections")
 def bot_connections(refresh: int = 0) -> dict[str, Any]:
     """逐平台连接状态，供网页端的"连接检查"面板使用。"""

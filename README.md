@@ -202,7 +202,7 @@ python -m app.bot.cli autopilot # 无人值守：按点自动选题、生成、�
 - **一个 Key 覆盖四个平台**（复用已有的 Upload-Post 集成）；未配置时会生成发布回执而不真正上传。
 - **Telegram 长轮询**，不需要公网 IP、域名或证书。
 
-**从 [GET-EVERYTHING.md](GET-EVERYTHING.md)（完整步骤清单）或 [START-HERE.md](START-HERE.md) 开始** · 账号连接见 [CONNECTING.md](CONNECTING.md) · 无人值守见 [AUTOPILOT.md](AUTOPILOT.md) · 自己的域名/链接见 [DEPLOY.md](DEPLOY.md) · 完整参考见 [docs/bot.md](docs/bot.md)。
+**从 [GET-EVERYTHING.md](GET-EVERYTHING.md)（完整步骤清单）或 [START-HERE.md](START-HERE.md) 开始** · 账号连接见 [CONNECTING.md](CONNECTING.md) · 无人值守见 [AUTOPILOT.md](AUTOPILOT.md) · 免费人工排期见 [SCHEDULING.md](SCHEDULING.md) · 自己的域名/链接见 [DEPLOY.md](DEPLOY.md) · 完整参考见 [docs/bot.md](docs/bot.md)。
 
 ---
 
