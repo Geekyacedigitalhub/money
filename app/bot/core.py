@@ -57,6 +57,7 @@ stock footage, and post it to Facebook, YouTube, TikTok and Instagram.
 /preview — resend the last video
 /caption <text> — override the caption text
 /cancel — stop the current job
+/connect — check which platforms are really connected
 /how — what each platform accepts (length, account, payouts)
 /mode — show demo / live status
 
@@ -243,6 +244,8 @@ class BotCore:
             return [self._mode_reply()]
         if command in {"jobs", "history"}:
             return [self._jobs_reply()]
+        if command in {"connect", "connections", "check"}:
+            return [self._connect_reply()]
         if command in {"how", "rules", "limits"}:
             from app.bot import delivery
 
@@ -547,7 +550,8 @@ class BotCore:
         ok = [item for item in results if item.success]
         failed = [item for item in results if not item.success]
         job.results = {
-            item.platform.value: ("ok" if item.success else item.detail) for item in results
+            item.platform.value: (item.url or "ok") if item.success else item.detail
+            for item in results
         }
         simulated = any(item.simulated for item in results)
         job.touch(
@@ -559,18 +563,31 @@ class BotCore:
         lines: list[str] = []
         if ok:
             title = "🧪 Simulated publish complete" if simulated else "✅ Published"
-            lines.append(
-                f"{title}: " + ", ".join(item.platform.label for item in ok)
-            )
+            lines.append(f"{title}: " + ", ".join(item.platform.label for item in ok))
             if simulated:
                 lines.append(
                     "_Nothing was uploaded. Add Upload-Post credentials to go live._"
                 )
+            else:
+                # 直接给出帖子链接：这是"到底发出去了没有"的唯一硬证据。
+                lines.append("")
+                for item in ok:
+                    if item.url:
+                        lines.append(f"{item.platform.emoji} {item.platform.label} — {item.url}")
+                    else:
+                        lines.append(
+                            f"{item.platform.emoji} {item.platform.label} — posted "
+                            "(no link returned; check the app)"
+                        )
         if failed:
             lines.append("")
             lines.append("❌ Failed:")
             for item in failed:
-                lines.append(f"• {item.platform.emoji} {item.platform.label} — {item.detail}")
+                detail = item.detail
+                lowered = detail.lower()
+                if "skipped" in lowered or "no account" in lowered:
+                    detail = "not connected to this profile — run /connect"
+                lines.append(f"• {item.platform.emoji} {item.platform.label} — {detail}")
 
         buttons = [[
             Button(label="🔁 Make another", data="new"),
@@ -634,6 +651,12 @@ class BotCore:
             with self._lock:
                 self._jobs.pop(job.id, None)
             return self._start_generation(session, topic)
+
+        if kind == "test":
+            platform = parse_platform(payload)
+            if platform is None:
+                return [Reply(text="Unknown platform.")]
+            return self._start_test_post(session.chat_id, platform)
 
         if kind == "cap":
             if job is None:
@@ -735,6 +758,54 @@ class BotCore:
         }
         return [self._preview_publish_reply(job)]
 
+    def _start_test_post(self, chat_id: str, platform: Platform) -> list[Reply]:
+        """发一条真实的测试帖，证明链路端到端可用。"""
+        from app.bot import doctor
+
+        report = doctor.check_connection(self.settings)
+        status = report.status_for(platform)
+        if not status.connected or status.needs_reauth:
+            return [
+                Reply(
+                    text=(
+                        f"⚠️ {platform.label} is not connected yet.\n"
+                        f"Connect it here: {doctor.DASHBOARD_MANAGE_USERS}"
+                    )
+                )
+            ]
+
+        notice = Reply(
+            text=(
+                f"🧪 Rendering a 6-second test clip and posting it to "
+                f"**{platform.label}** — this is a REAL public post. "
+                "It will appear on your profile shortly."
+            )
+        )
+        self._executor.submit(self._run_test_post, chat_id, platform)
+        return [notice]
+
+    def _run_test_post(self, chat_id: str, platform: Platform) -> None:
+        from app.bot import doctor
+
+        try:
+            result = doctor.send_test_post(self.settings, platform)
+        except Exception as exc:  # noqa: BLE001
+            logger.exception(f"test post crashed: {exc}")
+            self._emit(
+                chat_id,
+                Reply(text=f"❌ Test post to {platform.label} failed: {exc}"),
+            )
+            return
+
+        lines = [result.summary]
+        if result.success and result.url:
+            lines.append("")
+            lines.append("Open it to confirm it is live.")
+        elif result.success:
+            lines.append("")
+            lines.append("No URL came back, so check the platform app directly.")
+        self._emit(chat_id, Reply(text="\n".join(lines)))
+
     def _cancel(self, session: Session) -> Reply:
         active_id = self._active_by_chat.get(session.chat_id)
         job = self.job(active_id) if active_id else None
@@ -747,6 +818,26 @@ class BotCore:
         with self._lock:
             self._active_by_chat.pop(session.chat_id, None)
         return Reply(text="🛑 Cancelled.")
+
+    def _connect_reply(self) -> Reply:
+        """逐平台检查连接状态，并给出可直接点的测试按钮。"""
+        from app.bot import doctor
+
+        report = doctor.check_connection(self.settings)
+        buttons: list[list[Button]] = []
+        for status in report.platforms:
+            if status.connected and not status.needs_reauth:
+                buttons.append(
+                    [
+                        Button(
+                            label=f"🧪 Send test to {status.platform.label}",
+                            data=f"test:{status.platform.value}",
+                        )
+                    ]
+                )
+        if not buttons:
+            buttons.append([Button(label="📡 Platforms", data="pl:refresh")])
+        return Reply(text=doctor.format_report(report), buttons=buttons)
 
     def _mode_reply(self) -> Reply:
         ready, reason = publish_account_ready()

@@ -28,6 +28,31 @@ class PlatformResult:
     success: bool
     detail: str = ""
     simulated: bool = False
+    # 平台返回的帖子链接（如果有）。用户要的就是这个 —— 点开就能看到成片。
+    url: str = ""
+
+
+def extract_url(payload: object, depth: int = 0) -> str:
+    """从各家平台结构不一的返回里捞出第一个可点击的帖子链接。"""
+    if depth > 4:
+        return ""
+    if isinstance(payload, dict):
+        for key in ("url", "post_url", "permalink", "share_url", "video_url"):
+            value = payload.get(key)
+            if isinstance(value, str) and value.startswith("http"):
+                return value
+        for value in payload.values():
+            found = extract_url(value, depth + 1)
+            if found:
+                return found
+    elif isinstance(payload, list):
+        for value in payload:
+            found = extract_url(value, depth + 1)
+            if found:
+                return found
+    elif isinstance(payload, str) and payload.startswith("http"):
+        return payload
+    return ""
 
 
 class Publisher(Protocol):
@@ -105,7 +130,11 @@ class UploadPostPublisher:
                     or result.get("message")
                     or "the platform rejected the upload"
                 )
-            results.append(PlatformResult(platform, success, detail))
+            results.append(
+                PlatformResult(
+                    platform, success, detail, url=extract_url(result) if success else ""
+                )
+            )
         return results
 
 

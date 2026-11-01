@@ -64,6 +64,7 @@ platform sections and a **🧪 Simulate publish** button.
 | `/caption <text>` | Override the caption for every selected platform |
 | `/cancel` | Stop the running job |
 | `/jobs` | Recent job history |
+| `/connect` | Check every platform's real connection state, with test-post buttons |
 | `/mode` | Demo vs live, and whether publishing is real |
 | `/new` | Start a fresh video |
 
@@ -136,6 +137,17 @@ upload_post_youtube_made_for_kids = false
 ```
 
 Do that and `cli status` flips from `SIMULATED` to `LIVE via upload-post`.
+
+**Then verify it, don't assume it:**
+
+```bash
+python -m app.bot.cli doctor                     # per-platform connection state
+python -m app.bot.cli doctor --test-post tiktok  # real 6s post, prints the live URL
+```
+
+`doctor` reads `GET /api/uploadposts/users` and reports each platform as connected,
+never connected, or `reauth_required` (expired login). Full walkthrough, including
+every error code: [CONNECTING.md](../CONNECTING.md).
 
 **Account requirements on the platform side** (Upload-Post cannot bypass these):
 

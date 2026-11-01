@@ -135,6 +135,21 @@ def bot_session(chat_id: str = "") -> dict[str, Any]:
     }
 
 
+@router.get("/api/bot/connections")
+def bot_connections() -> dict[str, Any]:
+    """逐平台连接状态，供网页端的"连接检查"面板使用。"""
+    from app.bot import doctor
+
+    report = doctor.check_connection(_core().settings)
+    return {
+        "report": report.to_dict(),
+        "text": doctor.format_report(report),
+        "all_connected": report.all_connected,
+        "manage_url": doctor.DASHBOARD_MANAGE_USERS,
+        "api_keys_url": doctor.DASHBOARD_API_KEYS,
+    }
+
+
 @router.get("/api/bot/guides")
 def platform_guides() -> dict[str, Any]:
     rows = [

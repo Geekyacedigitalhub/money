@@ -200,7 +200,7 @@ python -m app.bot.cli serve     # 打开 http://127.0.0.1:8080/bot
 - **一个 Key 覆盖四个平台**（复用已有的 Upload-Post 集成）；未配置时会生成发布回执而不真正上传。
 - **Telegram 长轮询**，不需要公网 IP、域名或证书。
 
-**从 [START-HERE.md](START-HERE.md) 开始** · 完整参考见 [docs/bot.md](docs/bot.md)。
+**从 [START-HERE.md](START-HERE.md) 开始** · 账号连接见 [CONNECTING.md](CONNECTING.md) · 完整参考见 [docs/bot.md](docs/bot.md)。
 
 ---
 

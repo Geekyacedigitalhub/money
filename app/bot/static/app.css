@@ -73,6 +73,8 @@ html, body {
 .badge.live { background: rgba(52, 211, 153, .14); color: var(--ok); }
 .badge.sim  { background: rgba(56, 189, 248, .14); color: var(--accent); }
 
+.tools { display: flex; gap: 8px; }
+
 .ghost {
   background: transparent; border: 1px solid var(--line); color: var(--muted);
   border-radius: 10px; padding: 7px 10px; cursor: pointer; font-size: 14px;

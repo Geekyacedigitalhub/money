@@ -278,6 +278,39 @@
     }
   }
 
+  async function openConnections() {
+    const sheet = $("guidesSheet");
+    sheet.hidden = false;
+    const body = $("guidesBody");
+    body.innerHTML = "Checking each platform…";
+    try {
+      const data = await api("/api/bot/connections");
+      const rows = data.report.platforms
+        .map((item) => {
+          const icon = item.reauth_required ? "⚠️" : item.connected ? "✅" : "❌";
+          const label = item.platform;
+          const detail = item.reauth_required
+            ? "login expired — reconnect it"
+            : item.connected
+              ? `connected as ${item.handle || item.display_name || "account"}`
+              : item.note || "not connected";
+          return `<div class="guide"><h4>${icon} ${label}</h4>
+                  <dl><dd>${detail}</dd></dl></div>`;
+        })
+        .join("");
+      body.innerHTML =
+        `<div class="guide"><h4>${data.all_connected ? "All four connected" : "Not everything is connected yet"}</h4>
+           <dl><dd>Profile: ${data.report.profile_name || "—"}</dd></dl></div>` +
+        rows +
+        `<div class="guide"><h4>Connect or fix accounts</h4>
+           <dl><dd><a href="${data.manage_url}" target="_blank" rel="noopener">${data.manage_url}</a></dd>
+               <dt>API key</dt>
+               <dd><a href="${data.api_keys_url}" target="_blank" rel="noopener">${data.api_keys_url}</a></dd></dl></div>`;
+    } catch (error) {
+      body.textContent = error.message;
+    }
+  }
+
   /* ---------------- boot ---------------- */
 
   async function boot() {
@@ -340,6 +373,7 @@
     uploadFile(file);
   });
 
+  $("connBtn").addEventListener("click", openConnections);
   $("guidesBtn").addEventListener("click", openGuides);
   $("guidesClose").addEventListener("click", () => ($("guidesSheet").hidden = true));
   $("guidesSheet").addEventListener("click", (event) => {

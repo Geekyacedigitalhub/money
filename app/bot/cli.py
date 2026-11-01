@@ -17,6 +17,7 @@ import time
 
 from loguru import logger
 
+from app.bot import doctor
 from app.bot.config import load_settings, publish_account_ready
 from app.bot.models import (
     ALL_PLATFORMS,
@@ -220,6 +221,38 @@ def cmd_demo(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_doctor(args: argparse.Namespace) -> int:
+    """检查每个平台到底连上了没有，可选发一条真实的测试帖。"""
+    settings = load_settings()
+    print("Checking your connections…\n")
+    report = doctor.check_connection(settings)
+    print(doctor.format_report(report, markdown=False))
+    print()
+
+    if not args.test_post:
+        if report.all_connected:
+            print("Verified. To prove it end-to-end, post a real test clip:")
+            print("  python -m app.bot.cli doctor --test-post tiktok")
+        return 0 if report.all_connected else 1
+
+    platform = parse_platform(args.test_post)
+    if platform is None:
+        print(f"error: unknown platform '{args.test_post}'", file=sys.stderr)
+        print("choose one of: " + ", ".join(item.value for item in ALL_PLATFORMS))
+        return 2
+
+    status = report.status_for(platform)
+    if not status.connected or status.needs_reauth:
+        print(f"{platform.label} is not connected yet — connect it first:")
+        print(f"  {doctor.DASHBOARD_MANAGE_USERS}")
+        return 1
+
+    print(f"Posting a short test clip to {platform.label}… (this is a real post)")
+    result = doctor.send_test_post(settings, platform)
+    print("  " + result.summary)
+    return 0 if result.success else 1
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="python -m app.bot.cli",
@@ -245,6 +278,17 @@ def build_parser() -> argparse.ArgumentParser:
         help="trust X-Forwarded-* headers (needed behind a reverse proxy or sandbox preview)",
     )
     serve.set_defaults(func=cmd_serve)
+
+    doctor_cmd = sub.add_parser(
+        "doctor", help="check which social platforms are really connected"
+    )
+    doctor_cmd.add_argument(
+        "--test-post",
+        default="",
+        metavar="PLATFORM",
+        help="also publish a short test clip to one platform (tiktok/instagram/facebook/youtube)",
+    )
+    doctor_cmd.set_defaults(func=cmd_doctor)
 
     ask = sub.add_parser("ask", help="generate one video from a topic")
     ask.add_argument("topic")

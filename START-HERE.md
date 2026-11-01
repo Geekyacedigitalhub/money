@@ -100,41 +100,58 @@ Restart, then send a topic again.
 
 ---
 
-## Step 3 — Connect your 4 accounts (one signup)
+## Step 3 — Connect your 4 accounts (10 minutes, once)
 
-You have two options. Take the first unless you have a reason not to.
+You connect the accounts **once, at upload-post.com** — not to this code. Then the
+bot posts through it with a single key.
 
-### Option A — Upload-Post (one key covers all four)
-
-1. Sign up at https://upload-post.com
-2. In their dashboard, **connect TikTok, Instagram, Facebook and YouTube**
-3. Copy your API key + username into `config.toml`:
+1. Sign up at **https://app.upload-post.com**
+2. Create an API key: **https://app.upload-post.com/api-keys** → copy it
+3. Create a profile: **https://app.upload-post.com/manage-users** → name it `ace_brand` → copy that name
+4. On that profile, click **Connect** next to TikTok, Instagram, Facebook, YouTube
+5. Paste into `config.toml`:
 
 ```toml
 [app]
 upload_post_enabled = true
 upload_post_api_key = "..."
-upload_post_username = "..."
+upload_post_username = "ace_brand"      # the PROFILE name — not your email
 upload_post_platforms = ["tiktok", "instagram", "facebook", "youtube"]
+upload_post_youtube_privacy_status = "unlisted"   # flip to "public" once you trust it
 ```
 
-Restart. `python -m app.bot.cli status` should now say **`publishing : LIVE via upload-post`**.
+**Three things block most people — check them before you start:**
 
-**Account requirements they cannot skip:**
-
-| Platform | You need |
+| Platform | Blocker |
 |---|---|
-| TikTok | A TikTok account |
-| Instagram | A **Creator or Business** account (not personal) |
-| Facebook | A **Page** (not your personal profile) |
-| YouTube | A channel with phone verification + 2-step verification |
+| Instagram | Must be a **Creator/Business** account (Settings → Account type) |
+| Facebook | Must be a **Page**, not your personal profile |
+| YouTube | The Google account needs **phone verification + 2-Step Verification** |
 
-### Option B — Free, but you do the last step yourself
+**Now verify it — this is the part that matters:**
 
-Send yourself the video from the chat, then upload it manually to each app. Zero
-cost, no signup. Use this until you're posting daily.
+```bash
+python -m app.bot.cli doctor
+```
 
----
+```
+✅ Connected to profile `ace_brand`
+
+✅ TikTok — connected as @ace
+✅ Instagram — connected as @ace.ig
+❌ Facebook — never connected
+```
+
+Then prove it end-to-end with a real post:
+
+```bash
+python -m app.bot.cli doctor --test-post tiktok
+```
+
+It posts a 6-second clip labelled "CONNECTION TEST" and prints the live URL.
+**Open that link.** If it loads, everything works.
+
+Full detail, including what every error message means: **[CONNECTING.md](CONNECTING.md)**.
 
 ## Step 4 — Publish for the first time
 
@@ -209,6 +226,8 @@ python -m app.bot.cli status
 | Message | Fix |
 |---|---|
 | `SIMULATED (missing upload_post_…)` | Publishing keys not set — step 3 |
+| `doctor` says "Profile not found" | `upload_post_username` must be the profile name, not your email |
+| A platform is "skipped" on publish | That account isn't connected to your profile — run `doctor` |
 | `Generation failed … api_key is not set` | LLM key missing — step 2 |
 | `ffmpeg is not available` | `sudo apt install ffmpeg`, or set `[app] ffmpeg_path` |
 | `restricted to an allow-list` | Add your id to `[bot] allowed_users` |
