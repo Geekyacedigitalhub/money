@@ -843,3 +843,69 @@ open_task_folder_on_completion = true
 # subtitle_background_enabled = false
 # subtitle_background_color = "#000000"
 # rounded_subtitle_background = false
+
+# =============================================================================
+# Social Publishing Bot / 社交发布机器人
+# =============================================================================
+# Chat bot that turns a topic into a finished vertical video and posts it to
+# Facebook, YouTube, TikTok and Instagram. Start it with:
+#
+#     python -m app.bot.cli serve --telegram
+#
+# Web chat UI:  http://127.0.0.1:8080/bot
+
+[bot]
+# Master switch for the bot. The original WebUI / API / CLI are unaffected.
+enabled = true
+
+# demo_mode renders a clearly-labelled placeholder video with FFmpeg only — no
+# LLM, no TTS, no stock-footage API. Use it to verify the whole flow before you
+# buy any keys. Set to false for real videos.
+demo_mode = true
+
+# User ids allowed to talk to the bot. Empty means "anyone", which is only safe
+# on localhost or a trusted network. For Telegram, message the bot and it will
+# print your numeric id so you can paste it here.
+allowed_users = []
+
+# Channels used for new jobs. Order is the order buttons appear.
+# Allowed: "tiktok", "instagram", "facebook", "youtube"
+default_platforms = ["tiktok", "instagram", "facebook", "youtube"]
+
+# false (recommended) = the bot sends you a preview and waits for your tap
+# before anything is published. true = publish immediately after rendering.
+auto_publish = false
+
+# --- video defaults -------------------------------------------------------
+video_aspect = "9:16"                  # "9:16", "16:9", "1:1"
+video_source = "pexels"                # pexels / pixabay / coverr / local / ...
+voice_name = "en-US-AriaNeural-Female"
+video_language = ""                    # empty = auto detect
+subtitle_enabled = true
+paragraph_number = 1                   # raise for longer scripts (TikTok rewards need 60s+)
+
+# --- captions -------------------------------------------------------------
+# Language used for the per-platform title/description/hashtags.
+caption_language = "auto"
+
+# --- runtime --------------------------------------------------------------
+max_concurrent_jobs = 1                # keep at 1 on small VPS instances
+job_timeout_seconds = 1800
+max_upload_mb = 200                    # limit for "send me an MP4" uploads
+
+# --- Telegram -------------------------------------------------------------
+# Create a bot with @BotFather, then paste the token here. Long polling is used,
+# so no public IP or HTTPS certificate is required.
+telegram_token = ""
+
+# --- YouTube --------------------------------------------------------------
+youtube_privacy_status = "public"      # "public", "unlisted", "private"
+youtube_made_for_kids = false
+
+# Publishing itself uses the [app] section above:
+#   upload_post_enabled   = true
+#   upload_post_api_key   = "..."        # https://upload-post.com
+#   upload_post_username  = "..."
+#   upload_post_platforms = ["tiktok", "instagram", "facebook", "youtube"]
+# Until those are set, the bot runs in "simulated publish" mode: it prepares the
+# full payload and writes a receipt under storage/bot/receipts/ without posting.

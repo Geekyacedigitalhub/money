@@ -612,6 +612,7 @@ def save_config():
         config_to_save["fish_audio"] = dict(fish_audio)
         config_to_save["voxcpm"] = dict(voxcpm)
         config_to_save["ui"] = dict(ui)
+        config_to_save["bot"] = dict(bot)
         config_to_save["diagnostics"] = dict(diagnostics)
         serialized_config = toml.dumps(config_to_save, encoder=_ConfigTomlEncoder())
 
@@ -679,6 +680,9 @@ ui = _SynchronizedConfig(
         },
     )
 )
+# 社交发布机器人的独立配置段。缺失时保持空字典，让 app/bot/config.py 里的
+# 默认值生效，这样旧版 config.toml 无需修改也能启动。
+bot = _SynchronizedConfig(_cfg.get("bot", {}))
 
 hostname = socket.gethostname()
 

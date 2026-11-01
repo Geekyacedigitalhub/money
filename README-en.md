@@ -181,6 +181,28 @@ Thanks to [Kimi](https://platform.kimi.ai?track_id=track-9e3b711aa2594e378f6fe5b
 
 ---
 
+## Social Publishing Bot 🤖
+
+A chat front-end that turns a topic into a finished vertical video and posts it to
+**Facebook, YouTube, TikTok and Instagram** — from a browser chat page or from Telegram.
+
+```bash
+python -m app.bot.cli status    # what is live vs simulated
+python -m app.bot.cli serve     # chat UI at http://127.0.0.1:8080/bot
+```
+
+- **Nothing goes public without your tap.** Send a topic, get the MP4 with per-platform
+  captions and buttons, then publish, regenerate or discard.
+- **Runs in demo mode first.** With no API keys at all it renders a clearly-labelled
+  placeholder video, so you can verify the whole flow before paying for anything.
+- **One key for all four platforms** via the existing Upload-Post integration; until it is
+  configured the bot writes publish receipts instead of uploading.
+- **Telegram** via long polling — no public IP, domain or certificate needed.
+
+Full guide: [docs/bot.md](docs/bot.md).
+
+---
+
 ## Features 🎯
 
 ### Creation Workflows
