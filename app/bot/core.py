@@ -41,7 +41,7 @@ _MAX_PENDING_PER_CHAT = 50
 _MAX_PENDING_CHATS = 200
 
 HELP_TEXT = """\
-🤖 **MoneyPrinterTurbo Bot**
+🤖 **{name}**
 
 Send me a topic and I'll write the script, voice it, subtitle it, cut it to
 stock footage, and post it to Facebook, YouTube, TikTok and Instagram.
@@ -219,7 +219,12 @@ class BotCore:
         argument = parts[1].strip() if len(parts) > 1 else ""
 
         if command in {"start", "help"}:
-            return [Reply(text=HELP_TEXT, buttons=self._help_keyboard(session))]
+            return [
+                Reply(
+                    text=HELP_TEXT.format(name=self.settings.display_name),
+                    buttons=self._help_keyboard(session),
+                )
+            ]
         if command in {"platforms", "platform", "apps"}:
             return [self._platforms_reply(session)]
         if command == "new":
@@ -242,7 +247,12 @@ class BotCore:
             from app.bot import delivery
 
             return [Reply(text=delivery.format_guides())]
-        return [Reply(text=f"Unknown command `/{command}`.\n\n{HELP_TEXT}")]
+        return [
+            Reply(
+                text=f"Unknown command `/{command}`.\n\n"
+                + HELP_TEXT.format(name=self.settings.display_name)
+            )
+        ]
 
     # ------------------------------------------------------------------
     # 平台选择
@@ -642,7 +652,7 @@ class BotCore:
                 job.touch(state=JobState.failed, error="discarded", message="Discarded")
             return [Reply(text="🗑 Discarded. Send me a new topic whenever you're ready.")]
 
-        return [Reply(text=HELP_TEXT)]
+        return [Reply(text=HELP_TEXT.format(name=self.settings.display_name))]
 
     # ------------------------------------------------------------------
     # 手动上传的视频

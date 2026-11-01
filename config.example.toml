@@ -855,6 +855,13 @@ open_task_folder_on_completion = true
 # Web chat UI:  http://127.0.0.1:8080/bot
 
 [bot]
+# Make it yours. Shown as the chat title and in the welcome message.
+# Leave bot_name empty to get "<owner_name>'s Post Bot".
+#   owner_name = "Ace"
+#   bot_name   = "Ace Studio Bot"
+owner_name = ""
+bot_name = ""
+
 # Master switch for the bot. The original WebUI / API / CLI are unaffected.
 enabled = true
 

@@ -199,7 +199,7 @@ python -m app.bot.cli serve     # chat UI at http://127.0.0.1:8080/bot
   configured the bot writes publish receipts instead of uploading.
 - **Telegram** via long polling — no public IP, domain or certificate needed.
 
-Full guide: [docs/bot.md](docs/bot.md).
+**Start here: [START-HERE.md](START-HERE.md)** · full reference: [docs/bot.md](docs/bot.md).
 
 ---
 

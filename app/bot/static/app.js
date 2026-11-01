@@ -283,6 +283,11 @@
   async function boot() {
     try {
       const health = await api("/api/bot/health");
+      if (health.bot_name) {
+        document.title = health.bot_name;
+        const heading = document.querySelector(".brand h1");
+        if (heading) heading.textContent = health.bot_name;
+      }
       const badges = [];
       if (health.demo_mode) badges.push('<span class="badge demo">demo render</span>');
       badges.push(

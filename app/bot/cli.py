@@ -45,8 +45,10 @@ def cmd_status(_: argparse.Namespace) -> int:
     settings = load_settings()
     ready, reason = publish_account_ready()
 
-    print("MoneyPrinterTurbo Bot")
+    print(settings.display_name)
     print("─" * 46)
+    if settings.greeting_name:
+        print(f"owner           : {settings.greeting_name}")
     print(f"generation mode : {'DEMO (placeholder renders)' if settings.demo_mode else 'LIVE'}")
     print(f"video source    : {settings.video_source}")
     print(f"voice           : {settings.voice_name}")

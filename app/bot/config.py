@@ -66,6 +66,9 @@ def _as_platform_list(value: Any, default: list[str]) -> list[str]:
 class BotSettings:
     """机器人运行参数（不可变，便于安全地跨线程传递）。"""
 
+    # 让机器人变成"你的"：聊天页标题与欢迎语都用这两个字段。
+    owner_name: str = ""
+    bot_name: str = ""
     enabled: bool = True
     # 演示模式：不调用 LLM / 素材 / TTS，直接用 ffmpeg 渲染一段占位视频，
     # 让整条对话与发布流程在没有密钥的机器上也能跑通。
@@ -103,6 +106,19 @@ class BotSettings:
     @property
     def is_demo(self) -> bool:
         return self.demo_mode
+
+    @property
+    def display_name(self) -> str:
+        """聊天页顶部的名字：优先用配置，其次用 owner，最后用默认值。"""
+        if self.bot_name.strip():
+            return self.bot_name.strip()
+        if self.owner_name.strip():
+            return f"{self.owner_name.strip()}'s Post Bot"
+        return "Post Bot"
+
+    @property
+    def greeting_name(self) -> str:
+        return self.owner_name.strip()
 
     def allows(self, user_id: str) -> bool:
         if not self.allowed_users:
@@ -146,6 +162,8 @@ def load_settings() -> BotSettings:
             ]
 
     settings = BotSettings(
+        owner_name=str(raw.get("owner_name") or "").strip(),
+        bot_name=str(raw.get("bot_name") or "").strip(),
         enabled=_as_bool(raw.get("enabled"), defaults.enabled),
         demo_mode=_as_bool(raw.get("demo_mode"), defaults.demo_mode),
         allowed_users=tuple(allowed),
@@ -180,6 +198,14 @@ def load_settings() -> BotSettings:
     )
 
     # 环境变量优先，方便容器化部署。
+    if os.getenv("MPT_BOT_OWNER_NAME"):
+        settings = settings.with_overrides(
+            owner_name=os.getenv("MPT_BOT_OWNER_NAME", "").strip()
+        )
+    if os.getenv("MPT_BOT_NAME"):
+        settings = settings.with_overrides(
+            bot_name=os.getenv("MPT_BOT_NAME", "").strip()
+        )
     if os.getenv("MPT_BOT_DEMO_MODE"):
         settings = settings.with_overrides(
             demo_mode=_as_bool(os.getenv("MPT_BOT_DEMO_MODE"), settings.demo_mode)

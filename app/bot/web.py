@@ -112,6 +112,8 @@ def bot_health() -> dict[str, Any]:
     ready, reason = publisher_service.publish_account_ready()
     return {
         "ok": True,
+        "bot_name": core.settings.display_name,
+        "owner_name": core.settings.greeting_name,
         "demo_mode": bool(core.settings.demo_mode or core.settings.is_demo),
         "publishing_live": ready,
         "publishing_reason": reason,

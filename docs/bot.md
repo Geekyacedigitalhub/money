@@ -1,5 +1,8 @@
 # Social Publishing Bot
 
+> **New here?** Read [START-HERE.md](../START-HERE.md) first — it is the short,
+> linear version. This document is the reference.
+
 A chat bot that turns **a topic** into a finished vertical video and posts it to
 **Facebook, YouTube, TikTok and Instagram**.
 

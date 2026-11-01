@@ -113,7 +113,20 @@ def test_allow_list_blocks_strangers(settings):
     assert "restricted" in replies[0].text.lower()
 
     allowed = core.handle(ChatMessage(chat_id="c1", text="/help", user_id="42"))
-    assert "MoneyPrinterTurbo Bot" in allowed[0].text
+    assert core.settings.display_name in allowed[0].text
+
+
+def test_display_name_derives_from_owner():
+    assert BotSettings().display_name == "Post Bot"
+    assert BotSettings(owner_name="Ace").display_name == "Ace's Post Bot"
+    assert BotSettings(owner_name="Ace", bot_name="Studio").display_name == "Studio"
+
+
+def test_help_uses_the_configured_name(settings):
+    named = BotSettings(demo_mode=True, bot_name="Ace Studio Bot")
+    core = make_core(named)
+    text = core.handle(ChatMessage(chat_id="n", text="/help", user_id="u"))[0].text
+    assert "Ace Studio Bot" in text
 
 
 def test_help_lists_all_commands(settings):
