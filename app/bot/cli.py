@@ -128,15 +128,9 @@ def cmd_serve(args: argparse.Namespace) -> int:
             flush=True,
         )
 
-    if args.telegram:
-        token = settings.telegram_token
-        if not token:
-            print(
-                "error: --telegram needs [bot] telegram_token in config.toml\n"
-                "Get one from @BotFather and add it, then retry.",
-                file=sys.stderr,
-            )
-            return 2
+    # 配了 token 就自动开 Telegram：少一步手动操作，也不会出现“配好了却没生效”。
+    want_telegram = bool(getattr(args, "telegram", False) or settings.telegram_token)
+    if want_telegram:
         from app.bot.telegram import TelegramBot
 
         bot = TelegramBot(settings)
@@ -424,7 +418,11 @@ def build_parser() -> argparse.ArgumentParser:
     serve = sub.add_parser("serve", help="run the chat UI and API")
     serve.add_argument("--host", default="", help="bind address (default 0.0.0.0)")
     serve.add_argument("--port", type=int, default=0, help="port (default 8080)")
-    serve.add_argument("--telegram", action="store_true", help="also start Telegram polling")
+    serve.add_argument(
+        "--telegram",
+        action="store_true",
+        help="start Telegram polling (automatic when [bot] telegram_token is set)",
+    )
     serve.add_argument(
         "--bot-only",
         action="store_true",
