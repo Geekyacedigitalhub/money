@@ -68,19 +68,37 @@ Before you do, make sure the Google account has:
 
 Without both, Google accepts the connection and then rejects the upload.
 
-## Step 3 — Decide about TikTok (read this once, it saves an hour)
+## Step 3 — TikTok: it is a plan gate, nothing else
 
 **TikTok cannot be connected on the Free plan.** Upload-Post says so in a yellow
 banner, and no amount of re-clicking changes it. Your options:
 
 | Option | Cost | Result |
 |---|---|---|
-| **Upgrade Upload-Post** | paid plan | TikTok connects and the bot publishes to it automatically |
+| **Upgrade Upload-Post** | paid plan | TikTok connects; the bot publishes to it automatically, same as the rest |
 | **Stay on Free** | ₦0 | Bot publishes to Facebook / Instagram / YouTube; you post to TikTok manually from the download button (≈2 min) |
 | **Wait** | ₦0 | Nothing changes — it is a plan gate, not a bug |
 
-The bot is honest about this: `/connect` shows TikTok with
-*"requires a paid Upload-Post plan"*, not *"never connected"*.
+**Upgrading requires zero code changes.** Nothing in this repo is crippled or
+swapped for a free substitute: the TikTok path is already wired end to end. The
+moment the plan allows the OAuth connection, `/connect` turns green and the next
+autopilot cycle publishes there. The bot's message says exactly that instead of
+pretending the account was never connected.
+
+### What a paid Upload-Post plan changes (and what it doesn't)
+
+| | Free | Paid |
+|---|---|---|
+| TikTok publishing | ❌ blocked by Upload-Post | ✅ works — same connect button |
+| API calls per cycle | 10 | higher limit |
+| Profiles | 1–2 | more |
+| Facebook / Instagram / YouTube | ✅ | ✅ — identical |
+| The code you run | same | **same** — no fork, no downgrade |
+
+Everything else in this repo is already the full version: every LLM provider in
+`app/services/llm.py`, every footage source (Pexels, Pixabay, Coverr, local), the
+whole MoneyPrinterTurbo WebUI and REST API. Nothing was removed to make the free
+tier fit.
 
 ## Step 4 — Paste two values into `config.toml`
 

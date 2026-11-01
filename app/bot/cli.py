@@ -61,6 +61,7 @@ def cmd_status(_: argparse.Namespace) -> int:
         + ("LIVE via upload-post" if ready else f"SIMULATED ({reason})")
     )
     print("default targets : " + ", ".join(p.value for p in settings.platforms))
+    print("public link     : " + (settings.public_url or "(not set — see DEPLOY.md)"))
     if settings.allowed_users:
         print("allow-list      : " + ", ".join(settings.allowed_users))
     print()

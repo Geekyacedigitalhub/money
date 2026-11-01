@@ -331,3 +331,35 @@ def test_auto_pause_and_resume_are_persisted(tmp_path, settings):
         assert core.autopilot().state.paused is False
     finally:
         autopilot_service.Autopilot.__init__ = original
+
+
+def test_link_command_shows_the_public_url(settings):
+    core = make_core(settings.with_overrides(public_url="https://bot.example.com"))
+    reply = core.handle(ChatMessage(chat_id="c", user_id="c", text="/link"))[0]
+    assert "https://bot.example.com" in reply.text
+    assert "rehearsal" not in reply.text
+
+
+def test_link_command_without_a_url_explains_how_to_get_one(settings):
+    core = make_core(settings.with_overrides(public_url=""))
+    reply = core.handle(ChatMessage(chat_id="c", user_id="c", text="/link"))[0]
+    assert "DEPLOY.md" in reply.text
+    assert "cloudflared" in reply.text
+
+
+def test_public_url_is_normalised_from_config(monkeypatch):
+    from app.config import config
+
+    monkeypatch.setitem(config.bot, "public_url", "https://Bot.Example.com/")
+    from app.bot.config import load_settings
+
+    assert load_settings().public_url == "https://Bot.Example.com"
+
+
+def test_public_url_rejects_junk(monkeypatch):
+    from app.config import config
+
+    monkeypatch.setitem(config.bot, "public_url", "bot.example.com")
+    from app.bot.config import load_settings
+
+    assert load_settings().public_url == ""

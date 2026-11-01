@@ -62,6 +62,14 @@ def _as_platform_list(value: Any, default: list[str]) -> list[str]:
     return [item.value for item in sorted(found, key=order.get)]
 
 
+def _as_url(value: Any) -> str:
+    """只接受 http(s) 地址，去掉结尾斜杠；其它输入当成“没配置”。"""
+    text = str(value or "").strip().rstrip("/")
+    if not text.startswith(("http://", "https://")):
+        return ""
+    return text
+
+
 def _as_times(value: Any, default: tuple[str, ...]) -> tuple[str, ...]:
     """把 ``"08:00, 19:30"`` 或列表统一成 ``("08:00", "19:30")``。"""
     if isinstance(value, str):
@@ -131,6 +139,9 @@ class BotSettings:
     autopilot_publish: bool = True
     # 自己的选题清单；留空 = storage/bot/autopilot/topics.txt
     autopilot_topics_file: str = ""
+    # 你自己的公开地址（自定义域名 / 隧道 / VPS），用于 /link 和二维码。
+    # 留空 = 只显示本机地址。
+    public_url: str = ""
 
     @property
     def is_demo(self) -> bool:
@@ -246,6 +257,10 @@ def load_settings() -> BotSettings:
             raw.get("autopilot_publish"), defaults.autopilot_publish
         ),
         autopilot_topics_file=str(raw.get("autopilot_topics_file") or "").strip(),
+        # 环境变量优先：容器/云平台用 MPT_BOT_PUBLIC_URL 覆盖挂载进来的配置。
+        public_url=_as_url(
+            os.getenv("MPT_BOT_PUBLIC_URL") or raw.get("public_url") or ""
+        ),
     )
 
     # 环境变量优先，方便容器化部署。

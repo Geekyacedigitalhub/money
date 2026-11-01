@@ -61,12 +61,12 @@ it going to your real Facebook page is worse than no post.
 
 Nothing else. No cron job, no server, no dashboard clicking.
 
-> **The 10-call limit is the real ceiling on the free plan.** 3 posts a day is
-> ~90 posts a month; the free tier allows 10 API calls per cycle. Autopilot will
-> start failing after 10 publishes with *"API call limit reached"*. Two honest
-> options: set `autopilot_max_per_day = 1` and top up when needed, or move to a
-> paid Upload-Post plan before you turn the volume up. Everything keeps rendering
-> in rehearsal either way — only the publishing is capped.
+> **The plan is the only ceiling.** The Free tier allows 10 API calls per cycle,
+> so 3 posts/day (~90/month) will hit *"API call limit reached"* after 10
+> publishes. On a paid Upload-Post plan that limit lifts and the same schedule
+> keeps running untouched — no code change, no config change beyond the plan.
+> Until then, set `autopilot_max_per_day = 1` and top up when you want to post.
+> Rendering is never capped; only publishing is.
 
 ## 3. What it posts about
 

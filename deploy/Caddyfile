@@ -1,0 +1,40 @@
+# Your own link: bot.geekyacedigitalhub.com
+#
+# Caddy terminates HTTPS (Let's Encrypt, auto-renewed) and proxies to the bot.
+# Basic auth is ON: this URL can generate videos and spend your API credits, so
+# it must not be open to the internet.
+#
+# Hash a password first:
+#   docker run --rm caddy:2 caddy hash-password --plaintext 'your-long-password'
+# Then paste the $2a$... hash below.
+
+{$DOMAIN} {
+	encode zstd gzip
+
+	basic_auth {
+		ace {$BASIC_AUTH_HASH}
+	}
+
+	reverse_proxy bot:8080 {
+		header_up X-Forwarded-Proto {scheme}
+	}
+
+	# Videos can be large; don't cut long uploads.
+	request_body {
+		max_size 300MB
+	}
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "same-origin"
+		-Server
+	}
+
+	log {
+		output file /data/access.log {
+			roll_size 10mb
+			roll_keep 3
+		}
+	}
+}

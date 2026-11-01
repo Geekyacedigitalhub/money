@@ -883,6 +883,10 @@ default_platforms = ["tiktok", "instagram", "facebook", "youtube"]
 # before anything is published. true = publish immediately after rendering.
 auto_publish = false
 
+# Your public address, once you deploy (see DEPLOY.md). /link shows it in chat.
+# Also settable with MPT_BOT_PUBLIC_URL, which wins over this value.
+# public_url = "https://bot.yourdomain.com"
+
 # --- autopilot: publish without touching anything -------------------------
 # With this on, `serve` also runs a scheduler that picks a topic, renders the
 # video and publishes it. No taps. Nothing goes out until the blockers listed by

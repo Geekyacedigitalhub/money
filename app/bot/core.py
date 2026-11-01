@@ -60,6 +60,7 @@ stock footage, and post it to Facebook, YouTube, TikTok and Instagram.
 /cancel — stop the current job
 /connect — check which platforms are really connected
 /auto — what the scheduler will post next (and pause it)
+/link — the address of this bot (open it on your phone)
 /how — what each platform accepts (length, account, payouts)
 /mode — show demo / live status
 
@@ -253,6 +254,8 @@ class BotCore:
             return [self._connect_reply()]
         if command in {"auto", "autopilot", "schedule"}:
             return [self._autopilot_reply()]
+        if command in {"link", "url", "site", "app"}:
+            return [self._link_reply()]
         if command in {"how", "rules", "limits"}:
             from app.bot import delivery
 
@@ -835,6 +838,45 @@ class BotCore:
         with self._lock:
             self._active_by_chat.pop(session.chat_id, None)
         return Reply(text="🛑 Cancelled.")
+
+    # ------------------------------------------------------------------
+    # 我自己的链接
+    # ------------------------------------------------------------------
+
+    def _link_reply(self) -> Reply:
+        """给出这个机器人自己的地址：手机上收藏它，就不用开电脑。"""
+        from app.bot import doctor
+
+        url = self.settings.public_url
+        if url and not url.rstrip("/").endswith("/bot"):
+            url = url.rstrip("/") + "/bot"   # 聊天页在 /bot，直接给可用的地址
+        lines: list[str] = []
+        if url:
+            lines += [
+                "🔗 **Your bot**",
+                f"{url}",
+                "",
+                "Open it on your phone and add it to your home screen — it behaves",
+                "like an app. Same chat, same jobs, same videos.",
+            ]
+            if self.settings.telegram_token:
+                lines += ["", "Telegram works too: message your bot directly."]
+        else:
+            lines += [
+                "🔗 **Your bot has no public address yet**",
+                "",
+                "Locally: http://127.0.0.1:8080/bot",
+                "",
+                "For a link that works from anywhere, either",
+                "• run `python -m app.bot.cli serve` on a small VPS and point a",
+                "  domain at it (Caddyfile included in `deploy/`), or",
+                "• start a Cloudflare tunnel: `cloudflared tunnel --url http://localhost:8080`",
+                "",
+                "Then set `[bot] public_url = \"https://bot.yourdomain.com\"` and this",
+                "command will show it. Step by step: DEPLOY.md",
+            ]
+        lines += ["", f"Dashboard: {doctor.DASHBOARD_MANAGE_USERS}"]
+        return Reply(text="\n".join(lines))
 
     # ------------------------------------------------------------------
     # 自动运营

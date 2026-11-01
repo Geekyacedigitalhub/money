@@ -35,8 +35,8 @@ DASHBOARD_MANAGE_USERS = "https://app.upload-post.com/manage-users"
 # 执行的解释，而不是让用户反复试授权。
 PROVIDER_LIMITS: dict[Platform, str] = {
     Platform.tiktok: (
-        "Upload-Post does not allow connecting TikTok on the Free plan — "
-        "upgrade the plan, or post to TikTok manually"
+        "not connected — Upload-Post blocks TikTok on the Free plan; "
+        "on a paid plan, click Connect in Manage Users"
     ),
 }
 
@@ -415,7 +415,9 @@ def _format_report_markdown(report: ConnectionReport) -> str:
             lines.append(f"Still to connect: **{', '.join(missing)}**")
             lines.append(f"Connect them here: {DASHBOARD_MANAGE_USERS}")
         for item in blocked:
-            lines.append(f"{item.platform.label} needs a paid plan — leave it unticked.")
+            lines.append(
+                f"{item.platform.label}: {item.note}. Leave it unticked until it connects."
+            )
         lines.append("")
         lines.append("Accounts that cannot be connected will be *skipped* on publish,")
         lines.append("not treated as a hard failure.")

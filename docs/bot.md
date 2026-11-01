@@ -66,6 +66,7 @@ platform sections and a **🧪 Simulate publish** button.
 | `/jobs` | Recent job history |
 | `/connect` | Check every platform's real connection state, with test-post buttons |
 | `/auto` | Autopilot schedule: next topic, next run, pause/resume, run one now |
+| `/link` | This bot's own public address (`[bot] public_url`), or how to get one |
 | `/mode` | Demo vs live, and whether publishing is real |
 | `/new` | Start a fresh video |
 
@@ -166,6 +167,14 @@ error code: [CONNECTING.md](../CONNECTING.md).
 | YouTube | A channel with phone verification and 2-step verification |
 
 ---
+
+### Your own link
+
+`[bot] public_url` (or `MPT_BOT_PUBLIC_URL`) is the address `/link` hands out and
+what you save on a phone. `deploy/` ships a Caddy + Compose bundle (HTTPS and basic
+auth), a systemd unit and a Cloudflare Tunnel config; [DEPLOY.md](../DEPLOY.md) is
+the walkthrough. The app never hardcodes a host, so a custom domain needs no code
+change.
 
 ### Autopilot — no manual steps
 

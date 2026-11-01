@@ -341,7 +341,7 @@ def test_disconnected_tiktok_explains_the_free_plan_limit(monkeypatch):
 
     tiktok = report.status_for(Platform.tiktok)
     assert tiktok.connected is False
-    assert "Free plan" in tiktok.note
+    assert "Free plan" in tiktok.note and "paid plan" in tiktok.note
     assert report.status_for(Platform.youtube).handle == "Geekyace Digital Hub"
 
 
@@ -401,5 +401,5 @@ def test_plan_blocked_platform_is_not_listed_as_to_connect(monkeypatch):
         report = doctor.check_connection()
     text = doctor.format_report(report, markdown=False)
     assert "Still to connect: Instagram, YouTube" in text
-    assert "TikTok needs a paid plan" in text
+    assert "on a paid plan, click Connect" in text
     assert "*" not in text.split("Accounts that cannot")[0]

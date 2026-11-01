@@ -233,6 +233,25 @@ Full guide, including running it 24/7 with systemd or cron:
 
 ---
 
+---
+
+## Step 7 — Your own link
+
+The sandbox preview URL dies with the session. For a link you own:
+
+```toml
+[bot]
+public_url = "https://bot.geekyacedigitalhub.com"
+```
+
+Then send **`/link`** in the chat — it answers with that address, ready to save to
+your phone's home screen. The deployment bundle is in `deploy/` (Caddy + Docker
+Compose, systemd unit, Cloudflare Tunnel config) and the click-by-click guide is
+[DEPLOY.md](DEPLOY.md): point `bot.geekyacedigitalhub.com` at a $5 VPS, or run a
+free Cloudflare Tunnel from a machine you leave on.
+
+---
+
 ## What you just built
 
 | | |
