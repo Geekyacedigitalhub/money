@@ -48,6 +48,7 @@ services:
       - "443:443/udp"
     environment:
       DOMAIN: ${DOMAIN:-bot.example.com}
+      AUTH_USER: ${AUTH_USER:-ace}
       BASIC_AUTH_HASH: ${BASIC_AUTH_HASH:?run caddy hash-password first}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro

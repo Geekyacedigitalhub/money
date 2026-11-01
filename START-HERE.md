@@ -245,10 +245,18 @@ public_url = "https://bot.geekyacedigitalhub.com"
 ```
 
 Then send **`/link`** in the chat — it answers with that address, ready to save to
-your phone's home screen. The deployment bundle is in `deploy/` (Caddy + Docker
-Compose, systemd unit, Cloudflare Tunnel config) and the click-by-click guide is
-[DEPLOY.md](DEPLOY.md): point `bot.geekyacedigitalhub.com` at a $5 VPS, or run a
-free Cloudflare Tunnel from a machine you leave on.
+your phone's home screen.
+
+Deploying is one command on the server:
+
+```bash
+git clone --branch arena/b977c1a2-money https://github.com/Geekyacedigitalhub/money.git /opt/money
+cd /opt/money && sudo bash deploy/setup-vps.sh --domain bot.geekyacedigitalhub.com
+```
+
+It checks DNS, installs Docker, generates and hashes a password, starts the bot
+behind HTTPS and waits until it answers. Full walkthrough:
+[DEPLOY.md](DEPLOY.md).
 
 ---
 

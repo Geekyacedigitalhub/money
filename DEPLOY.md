@@ -1,225 +1,164 @@
-# Your own link
+# Your own link — Option A (VPS + your domain)
 
-Right now the bot is reachable at the **sandbox preview**:
+Target: **`https://bot.geekyacedigitalhub.com/bot`**, running on a server that stays
+on, with HTTPS and a password in front of it.
 
-```
-https://8080-i8kpg0z73822g0yyo0bld.e2b.app
-```
-
-That link works today, but it belongs to this workspace session — it disappears
-when the session ends. A link you actually own looks like:
-
-```
-https://bot.geekyacedigitalhub.com
-```
-
-Same app, same chat, same autopilot — just on your domain, on a machine that stays
-on. Three ways to get there; pick one.
-
-| | Route | Cost | Time | Best if |
-|---|---|---|---|---|
-| **A** | VPS + your domain (Caddy does HTTPS) | ~$5/mo + domain you already own | 20 min | you want it permanent and independent |
-| **B** | Cloudflare Tunnel from a PC you leave on | free | 10 min | you want it now, no server bill |
-| **C** | Render / Railway / Fly | free tier sleeps, paid ~$5–7/mo | 15 min | you don't want to touch a server |
-
-Everything needed is in `deploy/`. You do **not** need to change code.
+Two things you do by hand (only you can), then one command does the rest.
 
 ---
 
-## Route A — VPS + `bot.geekyacedigitalhub.com` (recommended)
+## 1. The server
 
-### 1. Point DNS at the server
+| | |
+|---|---|
+| Spec | **2 vCPU · 4 GB RAM · 40 GB disk · Ubuntu 24.04** |
+| Any provider works | Hetzner CX22 (~€4), DigitalOcean ($6), Contabo, Vultr |
+| Why 4 GB | moviepy + Whisper subtitles; 1 GB will swap and crawl |
+| Login | SSH key or root password — you need SSH access |
 
-At your domain registrar (or Cloudflare), add:
+Save the **public IPv4** it gives you. Everything below uses `root@YOUR_IP`.
+
+> Don't overspend on CPU. You post 3 videos a day, one render at a time; 2 vCPU is
+> plenty and 8 vCPU changes nothing.
+
+## 2. One DNS record
+
+At the registrar where `geekyacedigitalhub.com` lives (or in Cloudflare):
 
 | Type | Name | Value | TTL |
 |---|---|---|---|
-| `A` | `bot` | your server's public IPv4 | Auto |
+| `A` | `bot` | `YOUR_IP` | Auto |
 
-Check it resolved before continuing:
+Check from your laptop:
 
 ```bash
-dig +short bot.geekyacedigitalhub.com
+dig +short bot.geekyacedigitalhub.com     # must print the server IP
 ```
 
-If that prints nothing, wait — Caddy cannot get a certificate until DNS is right.
-(Using Cloudflare? Keep the record **DNS only** / grey cloud on the first run, or
-turn on "Full (strict)" *after* Caddy has its certificate.)
+**If you use Cloudflare**, turn the orange cloud **off** for this record while
+Caddy gets its certificate (or keep it on and pass `--skip-dns-check` later).
 
-### 2. Install Docker on the server
-
-```bash
-curl -fsSL https://get.docker.com | sh
-```
-
-### 3. Get the code and your config onto the server
+## 3. The one command
 
 ```bash
-git clone https://github.com/Geekyacedigitalhub/money.git /opt/money
+ssh root@YOUR_IP
+git clone --branch arena/b977c1a2-money --depth 1 \
+  https://github.com/Geekyacedigitalhub/money.git /opt/money
 cd /opt/money
-cp config.example.toml config.toml      # then paste your keys, exactly as locally
+sudo bash deploy/setup-vps.sh --domain bot.geekyacedigitalhub.com
 ```
 
-You need the same `config.toml` you use now: `[app]` upload-post keys, `[bot]`
-settings, autopilot block, `public_url`.
+> The bot's code lives on the `arena/b977c1a2-money` branch until the pull request
+> is merged. Once it is on `main`, drop `--branch …` and the command stays the
+> same. The installer runs from whatever checkout you call it from.
 
-### 4. Create `deploy/.env`
+It will:
+
+1. verify `bot.geekyacedigitalhub.com` really points at this machine (and prints the exact record if not)
+2. install Docker if it isn't there
+3. clone the repo to `/opt/money`
+4. generate a strong password, hash it, and write `deploy/.env` with mode `600`
+5. build and start the bot + Caddy
+6. wait until HTTPS answers, then print the URL and password
+
+At the end it prints something like:
+
+```
+──────────────────────────────────────────────
+  Your bot is up
+──────────────────────────────────────────────
+  URL       https://bot.geekyacedigitalhub.com/bot
+  Username  ace
+  Password  Xk7pQ2mR9vLt4sB1nWca
+
+  Save that password now — only its hash is stored on the server.
+```
+
+First build takes 3–6 minutes; after that, restarts are seconds. Re-running the
+script is safe — it pulls, rebuilds and restarts.
+
+### Want to see it before running it?
 
 ```bash
-cp deploy/.env.example deploy/.env
+sudo bash deploy/setup-vps.sh --domain bot.geekyacedigitalhub.com --dry-run
 ```
 
-```dotenv
-DOMAIN=bot.geekyacedigitalhub.com
-PUBLIC_URL=https://bot.geekyacedigitalhub.com
-BASIC_AUTH_HASH=$2a$14$...
-```
+Prints every step and changes nothing. `--password '…'` uses your own instead of
+generating one, `--user ace2` changes the username.
 
-Generate the password hash (this is what keeps strangers out of a URL that can
-spend your credits):
+## 4. Your keys go on the server
+
+The script copies `config.example.toml` → `config.toml` if it's missing, and warns
+you that it has no keys. Two ways to fix that:
+
+**From your laptop** (recommended — it's the same file you already use):
 
 ```bash
-docker run --rm caddy:2 caddy hash-password --plaintext 'a-long-password-you-choose'
+scp config.toml root@YOUR_IP:/opt/money/config.toml
 ```
 
-Paste the whole `$2a$14$…` line. Username is `ace` (change it in `deploy/Caddyfile`
-if you like).
-
-### 5. Start it
+**Or edit on the server:**
 
 ```bash
-docker compose -f deploy/docker-compose.yml up -d --build
+nano /opt/money/config.toml
 ```
 
-First build takes a few minutes. Then:
-
-```bash
-docker compose -f deploy/docker-compose.yml logs -f bot
-```
-
-Look for:
-
-```
-autopilot started (live) — at 08:00, 13:00, 19:00, max 3/day
-Uvicorn running on http://0.0.0.0:8080
-```
-
-### 6. Prove the link
-
-```bash
-curl -u ace:your-password https://bot.geekyacedigitalhub.com/api/bot/health
-```
-
-Then open it in a browser — it will ask for the same username and password once.
-Tapping **Add to Home Screen** turns it into an app-like icon on your phone.
-
-Set the link in your config so the bot itself quotes it:
+Fill in at minimum:
 
 ```toml
+[app]
+upload_post_enabled = true
+upload_post_api_key = "…"
+upload_post_username = "default"
+
 [bot]
+demo_mode = false
 public_url = "https://bot.geekyacedigitalhub.com"
 ```
 
-Restart (`docker compose -f deploy/docker-compose.yml restart bot`) and send
-**`/link`** in the chat — it will answer with your domain.
-
----
-
-## Route B — Cloudflare Tunnel (free, no server)
-
-Use a machine you already leave on (your PC, a mini-PC, even this sandbox while it
-lives). Nothing is exposed inbound; Cloudflare dials out.
+Then restart just the bot:
 
 ```bash
-# 1. install (Debian/Ubuntu; other OSes: https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/)
-curl -L https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb -o cf.deb
-sudo dpkg -i cf.deb
-
-# 2. log in (opens a browser) and create a tunnel
-cloudflared tunnel login
-cloudflared tunnel create post-bot
-
-# 3. point your domain at it — no manual DNS record
-cloudflared tunnel route dns post-bot bot.geekyacedigitalhub.com
-
-# 4. run the bot locally first
-cd /opt/money && python -m app.bot.cli serve --autopilot
-
-# 5. in another terminal, run the tunnel with the config in this repo
-sudo cp deploy/cloudflared.yml /etc/cloudflared/config.yml
-sudo cloudflared service install
+cd /opt/money && docker compose -f deploy/docker-compose.yml restart bot
 ```
 
-`geekyacedigitalhub.com` must be on Cloudflare (free plan) for step 3. If your DNS
-is elsewhere, either move the nameservers to Cloudflare or use Route A.
-
-> **Protect it:** tunnels have no password prompt by default. Either enable
-> **Cloudflare Access** on the hostname (Zero Trust → Access → Applications, one
-> email rule), or run Caddy locally with the `deploy/Caddyfile`.
-
-Quick throwaway test (no domain, no account, URL changes every run):
+`screencap` of the truth afterwards:
 
 ```bash
-cloudflared tunnel --url http://localhost:8080
+docker compose -f deploy/docker-compose.yml exec bot python -m app.bot.cli status
 ```
 
----
+`publishing : LIVE via upload-post` and `autopilot : live` mean it's actually
+posting. Anything else names the missing key.
 
-## Route C — Render / Railway / Fly
-
-Works because the bot is just a Python process.
-
-1. New **Web Service** → connect `Geekyacedigitalhub/money`.
-2. Build: `pip install -r requirements.txt` (or use the repo `Dockerfile`).
-3. Start command:
-   ```
-   python -m app.bot.cli serve --port $PORT --host 0.0.0.0 --trust-proxy --autopilot
-   ```
-4. Add your `config.toml` contents as **environment variables** (`MPT_BOT_*`) or mount
-   a disk with the file — do not commit it.
-5. Add a custom domain `bot.geekyacedigitalhub.com` in the dashboard, then follow
-   the CNAME it shows you.
-
-Free tiers **sleep**; the autopilot only runs while the instance is awake, so use a
-paid instance (or Route A) if you want the schedule to be dependable.
-
----
-
-## After it is live — the 6-line checklist
-
-```toml
-[bot]
-public_url = "https://bot.geekyacedigitalhub.com"
-```
+## 5. Prove it from the outside
 
 ```bash
-# 1. the bot answers
-curl -u ace:your-password https://bot.geekyacedigitalhub.com/api/bot/health
-# 2. it agrees on the schedule and the connection state
-python -m app.bot.cli status
-python -m app.bot.cli doctor
-# 3. the phone can actually post
-#    open the link → send "/auto" → tap "Run one now"
+# HTTPS + password + app answering
+curl -u ace:'your-password' https://bot.geekyacedigitalhub.com/api/bot/health
+
+# what the scheduler will do next
+curl -u ace:'your-password' https://bot.geekyacedigitalhub.com/api/bot/autopilot
 ```
 
-- ✅ `/link` shows your domain.
-- ✅ `/auto` shows `live`, not `rehearsal`.
-- ✅ One test post returns a real platform URL.
+Then, on your phone: open the URL, log in once, **Add to Home Screen**. Send
+**`/link`** — it must answer with `https://bot.geekyacedigitalhub.com/bot`. Send
+**`/auto`** — it shows `live`, the next run time and any remaining blockers.
 
-## Security, because this URL spends money
+## 6. Security — this URL spends money
 
-| Risk | Guard already in the bundle |
+| Already handled by the bundle | You still do |
 |---|---|
-| Anyone generating videos on your box | **Caddy basic auth** in front of everything |
-| REST/WebUI API wide open | set `[app] api_key` — protects `/api/v1` and `/tasks` |
-| Telegram bot used by strangers | `[bot] allowed_users = ["your-id"]` |
-| Keys leaking into git | `config.toml` is git-ignored; mount it, never commit it |
-| Losing receipts/videos on redeploy | `storage/` is a mounted volume |
+| Basic auth on the whole site | keep the password in your password manager |
+| HTTPS + HSTS, auto-renewed by Caddy | — |
+| Bot port `8080` not published to the internet | — |
+| `config.toml` mounted read-only, `600` on host | never commit it (it's git-ignored) |
+| `storage/` on a volume, survives rebuilds | back it up if you care about receipts |
 
-Do not skip the password step "just to test" — a public URL with no auth is found
-by scanners within hours.
+Optional, still worth it: `[bot] allowed_users` for Telegram, and `[app] api_key`
+if you expose the original REST API.
 
-## Updating later
+## 7. Updating
 
 ```bash
 cd /opt/money
@@ -227,19 +166,52 @@ git pull
 docker compose -f deploy/docker-compose.yml up -d --build
 ```
 
-State (`storage/bot/autopilot/state.json`, videos, receipts) lives in the volume and
-survives the rebuild — the schedule picks up exactly where it stopped.
+The autopilot state (`storage/bot/autopilot/state.json`), videos and receipts live
+in the volume — the schedule resumes exactly where it stopped.
 
-## If it doesn't work
+## 8. When something is wrong
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| Caddy logs `no such host` / cert fails | DNS not pointing at the server | fix the A record, wait, `docker compose restart caddy` |
-| `502 Bad Gateway` | bot container down | `docker compose logs bot`, usually a missing key in `config.toml` |
-| Browser: `403 cross-origin browser request` | origin not allowed | `CORS_ALLOWED_ORIGINS=https://bot.geekyacedigitalhub.com` and `--trust-proxy` |
-| Password prompt loops | hash pasted with `$` expanded by the shell | wrap it in single quotes in `deploy/.env` |
-| `/bot` blank, assets 404 | opened a deep path without the SPA fallback | use the root URL |
-| Autopilot says `rehearsal` on the server | keys not in the server's `config.toml` | copy the exact file, check `cli status` |
-| Uploads over ~100 MB fail | proxy body limit | raise `max_size` in `deploy/Caddyfile` |
+| Script stops at DNS | record missing/wrong | add the A record, wait, re-run |
+| Caddy: `no such host` / no certificate | DNS changed after start | `docker compose -f deploy/docker-compose.yml restart caddy` |
+| Cloudflare 522 / 1016 | proxy on, origin not reachable | turn proxy off or fix the A record |
+| `502 Bad Gateway` | bot container down | `docker compose … logs bot`, usually a broken `config.toml` |
+| Password prompt loops | `$` in the hash got expanded by a shell | rewrite `deploy/.env` via the script, keep the hash in single quotes |
+| `/bot` blank | opened `/` instead of `/bot` | use the full URL from step 3 |
+| Uploads over ~100 MB fail | proxy body limit | raise `max_size` in `deploy/Caddyfile`, restart caddy |
+| Autopilot says `rehearsal` on the server | keys not in the server's `config.toml`, or `demo_mode` still true | step 4 |
 
-More: [AUTOPILOT.md](AUTOPILOT.md) · [CONNECTING.md](CONNECTING.md) · [docs/bot.md](docs/bot.md)
+Logs, in the order you'll need them:
+
+```bash
+docker compose -f deploy/docker-compose.yml logs -f bot
+docker compose -f deploy/docker-compose.yml logs caddy | tail -40
+```
+
+## Cost
+
+| Item | Per month |
+|---|---|
+| VPS (2 vCPU / 4 GB) | ~$5 |
+| Domain | already yours |
+| TLS certificate | free (Let's Encrypt, automatic) |
+| LLM for ~90 scripts | ~$1–2 |
+| Pexels footage | free |
+| Upload-Post | their plan — Free caps at 10 publishes/cycle |
+
+Roughly **$6–7/month** for fully unattended posting, plus whatever Upload-Post
+plan you choose.
+
+---
+
+## Alternatives (if the VPS falls through)
+
+- **Cloudflare Tunnel** — free, no server, but only runs while a machine you own is
+  on. Config: `deploy/cloudflared.yml`.
+- **Render / Railway / Fly** — no server admin, free tiers sleep (which stops the
+  schedule), paid tiers ≈ the VPS price.
+
+Both use the same `config.toml` and the same container; only the host changes.
+
+**Related:** [AUTOPILOT.md](AUTOPILOT.md) · [CONNECTING.md](CONNECTING.md) · [START-HERE.md](START-HERE.md)

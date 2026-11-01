@@ -12,7 +12,7 @@
 	encode zstd gzip
 
 	basic_auth {
-		ace {$BASIC_AUTH_HASH}
+		{$AUTH_USER:ace} {$BASIC_AUTH_HASH}
 	}
 
 	reverse_proxy bot:8080 {
