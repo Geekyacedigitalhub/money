@@ -765,14 +765,27 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _sink(message) -> None:
+    # 每次写入时才去取 sys.stderr：被进程内调用（测试、嵌入）时，直接绑定
+    # sys.stderr 会把 handler 钉在一个随后会被关闭的流上，之后所有日志都会
+    # 抛 "I/O operation on closed file"，把别人的输出搅乱。
+    sys.stderr.write(message)
+
+
+# 只有真的从命令行启动（python -m app.bot.cli）时才动全局日志配置。进程内调用
+# ——测试、或别的程序 import 之后调用——必须保持调用方的日志原样。
+_CLI_ENTRY_POINT = __name__ == "__main__"
+
+
 def main(argv: list[str] | None = None) -> int:
     # 命令行输出要能被脚本解析，因此把 loguru 的 INFO 噪音降到 stderr 且只保留
     # 警告以上；真正的错误仍然可见。
-    try:
-        logger.remove()
-        logger.add(sys.stderr, level="WARNING")
-    except Exception:  # noqa: BLE001, S110 - 日志系统不可用时也要能继续执行
-        pass
+    if _CLI_ENTRY_POINT:
+        try:
+            logger.remove()
+            logger.add(_sink, level="WARNING")
+        except Exception:  # noqa: BLE001, S110 - 日志系统不可用时也要能继续执行
+            pass
 
     parser = build_parser()
     args = parser.parse_args(argv)
