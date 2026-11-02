@@ -100,6 +100,9 @@ finishes:
 📦 ...\storage\bot\exports\first-test.zip
 ```
 
+`config.toml` is optional at this stage — without it the bot uses its defaults
+(demo render, built-in topics). You only create it in step 6.
+
 Open the folder:
 
 ```powershell
