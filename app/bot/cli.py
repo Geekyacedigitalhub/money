@@ -89,6 +89,11 @@ def cmd_status(_: argparse.Namespace) -> int:
         )
         if status["next_run"]:
             print(f"next run        : {status['next_run']} ({status['timezone']})")
+        blockers = [item for item in status.get("blockers") or [] if item["key"] != "delivery"]
+        if blockers:
+            print("to go live      :")
+            for item in blockers:
+                print(f"  • {item['why']}")
     except Exception as exc:  # noqa: BLE001 - status 不应因为自动运营出错而失败
         print(f"autopilot       : unavailable ({exc})")
     print()
@@ -381,6 +386,29 @@ def cmd_week(args: argparse.Namespace) -> int:
 
     settings = load_settings()
     count = max(1, int(args.count))
+
+    # 真实渲染动辄几分钟一条。缺 Key 时先停下来，而不是让它跑到一半失败。
+    from app.bot.autopilot import preflight
+
+    if not settings.demo_mode:
+        blockers = {item["key"]: item for item in preflight(settings)}
+        fatal = [
+            blockers[key]
+            for key in ("llm", "footage")
+            if key in blockers
+        ]
+        if fatal:
+            print("Cannot make real videos yet — demo_mode is off but:", file=sys.stderr)
+            for item in fatal:
+                print(f"  • {item['why']}", file=sys.stderr)
+                print(f"    → {item['fix']}", file=sys.stderr)
+            print()
+            print(
+                "Fix those in config.toml, or set [bot] demo_mode = true for "
+                "placeholder renders.",
+                file=sys.stderr,
+            )
+            return 2
 
     topics = list(args.topic or [])
     if not topics:

@@ -164,3 +164,37 @@ def test_manual_delivery_is_not_a_rehearsal(tmp_path, monkeypatch):
     keys = {item["key"] for item in blockers}
     assert "publish" not in keys
     assert "delivery" in keys
+
+
+def test_week_refuses_to_render_without_keys_when_demo_is_off(monkeypatch, capsys):
+    """关了 demo_mode 却没有 Key，必须先停下，而不是跑几分钟再失败。"""
+    from app.bot import cli
+    from app.config import config
+
+    monkeypatch.setitem(config.bot, "demo_mode", False)
+    monkeypatch.setitem(config.app, "llm_provider", "moonshot")
+    monkeypatch.setitem(config.app, "moonshot_api_key", "")
+    monkeypatch.setitem(config.app, "pexels_api_keys", [])
+
+    code = cli.main(["week", "--count", "1"])
+    captured = capsys.readouterr()
+    assert code == 2
+    assert "Cannot make real videos yet" in captured.err
+    assert "pexels" in captured.err.lower()
+
+
+def test_week_still_works_in_demo_mode_without_keys(monkeypatch, capsys):
+    """演示模式不需要任何 Key —— 这正是新手第一次跑通的方式。"""
+    from app.bot import cli, export
+    from app.config import config
+
+    monkeypatch.setitem(config.bot, "demo_mode", True)
+    monkeypatch.setitem(config.app, "pexels_api_keys", [])
+    monkeypatch.setattr(
+        export,
+        "batch_from_topics",
+        lambda *a, **k: {"count": 1, "folder": "x", "zip": "", "failed": 0, "rows": []},
+    )
+
+    assert cli.main(["week", "--count", "1"]) == 0
+    assert "Cannot make real videos yet" not in capsys.readouterr().err
