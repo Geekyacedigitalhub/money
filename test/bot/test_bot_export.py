@@ -274,3 +274,26 @@ def test_video_source_follows_the_app_section(monkeypatch):
     monkeypatch.setitem(runtime_config.app, "video_source", "pixabay")
     monkeypatch.setitem(runtime_config.bot, "video_source", "pexels")
     assert load_settings().video_source == "pixabay"
+
+
+def test_set_switches_llm_provider_to_the_key_that_was_given(tmp_path, monkeypatch):
+    """填了 gemini_api_key 却还在查 moonshot_api_key，是最迷惑的一种“没配好”。"""
+    from app.bot import cli
+    from app.config import config as runtime_config
+
+    target = tmp_path / "config.toml"
+    target.write_text('[app]\nllm_provider = "moonshot"\n\n[bot]\n')
+    monkeypatch.setattr(cli, "_config_path", lambda: target)
+    monkeypatch.setattr(runtime_config, "app", {}, raising=False)
+    monkeypatch.setattr(runtime_config, "bot", {}, raising=False)
+
+    cli.set_config_values(["gemini_api_key=abc123"])
+    assert 'llm_provider = "gemini"' in target.read_text()
+
+
+def test_set_refuses_placeholder_keys(capsys):
+    from app.bot import cli
+
+    code = cli.main(["set", "gemini_api_key=YOUR-GEMINI-KEY"])
+    assert code == 2
+    assert "placeholder" in capsys.readouterr().out

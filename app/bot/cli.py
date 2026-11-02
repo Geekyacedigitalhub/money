@@ -515,8 +515,30 @@ def _config_path() -> Path:
     return Path(root) / "config.toml"
 
 
+def _llm_provider_for(key: str) -> str | None:
+    """``gemini_api_key`` 说明用户想用 gemini —— 顺手把 llm_provider 也改掉。
+
+    否则会出现最迷惑的情况：Key 明明填了，检查还说“没有 LLM Key”，因为
+    llm_provider 还停在默认的 moonshot 上。
+    """
+    if not key.endswith("_api_key"):
+        return None
+    candidate = key[: -len("_api_key")]
+    from app.models.llm_provider import LLM_PROVIDERS
+    return candidate if candidate in LLM_PROVIDERS else None
+
+
 def set_config_values(pairs: list[str]) -> list[tuple[str, str]]:
     """把 key=value 写进 config.toml 正确的段落，返回改动了什么。"""
+    explicit = {pair.split("=", 1)[0].strip() for pair in pairs if "=" in pair}
+    implied = [
+        (key, _llm_provider_for(key))
+        for key in (pair.split("=", 1)[0].strip() for pair in pairs if "=" in pair)
+    ]
+    for key, provider in implied:
+        if provider and "llm_provider" not in explicit:
+            pairs = list(pairs) + [f"llm_provider={provider}"]
+            explicit.add("llm_provider")
     from app.config import config as runtime_config
 
     path = _config_path()
@@ -575,10 +597,27 @@ def _refresh(runtime_config, path: Path) -> None:
             current.update(loaded)
 
 
+_PLACEHOLDERS = ("YOUR-", "YOUR_", "PASTE", "XXXX", "<", "...")
+
+
+def _looks_like_placeholder(value: str) -> bool:
+    text = value.strip().strip('"').strip("'").upper()
+    return any(marker in text for marker in _PLACEHOLDERS)
+
+
 def cmd_set(args: argparse.Namespace) -> int:
     """第一次配置只需要一条命令，不用在 Notepad 里翻 900 行。"""
     if not args.pairs:
         return cmd_status(args)
+
+    for pair in args.pairs:
+        if "=" not in pair:
+            continue
+        key, value = pair.split("=", 1)
+        if _looks_like_placeholder(value):
+            print(f"✗ {key.strip()} still looks like a placeholder: {value.strip()}")
+            print("  Paste the real value — no quotes, no <brackets>.")
+            return 2
 
     changed = set_config_values(list(args.pairs))
     for key, rendered in changed:
