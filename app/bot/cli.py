@@ -14,6 +14,7 @@ import argparse
 import os
 import sys
 import time
+from pathlib import Path
 
 from loguru import logger
 
@@ -472,6 +473,133 @@ def cmd_doctor(args: argparse.Namespace) -> int:
     return 0 if result.success else 1
 
 
+# 这些键属于 [app]，其余属于 [bot]。用户不必知道 900 行的 config.toml 长什么样。
+_APP_KEYS = {
+    "llm_provider",
+    "video_source",
+    "video_aspect",
+    "voice_name",
+    "subtitle_enabled",
+    "paragraph_number",
+    "pexels_api_keys",
+    "pixabay_api_keys",
+    "coverr_api_keys",
+}
+_APP_SUFFIXES = ("_api_key", "_api_keys")
+
+
+def _toml_value(key: str, value: str) -> str:
+    text = value.strip()
+    low = text.lower()
+    if low in {"true", "false"}:
+        return low
+    if key.endswith("_keys"):
+        items = [part.strip().strip('"').strip("'") for part in text.split(",")]
+        items = [item for item in items if item]
+        return "[" + ", ".join(f'"{item}"' for item in items) + "]"
+    if text.replace(".", "", 1).isdigit():
+        return text
+    return '"' + text.replace('"', "'") + '"'
+
+
+def _section_for(key: str) -> str:
+    if key in _APP_KEYS or key.endswith(_APP_SUFFIXES):
+        return "app"
+    return "bot"
+
+
+def _config_path() -> Path:
+    from app.config import config as runtime_config
+
+    root = getattr(runtime_config, "root_dir", None) or os.getcwd()
+    return Path(root) / "config.toml"
+
+
+def set_config_values(pairs: list[str]) -> list[tuple[str, str]]:
+    """把 key=value 写进 config.toml 正确的段落，返回改动了什么。"""
+    from app.config import config as runtime_config
+
+    path = _config_path()
+    if not path.exists():
+        example = path.parent / "config.example.toml"
+        path.write_text(example.read_text(encoding="utf-8"), encoding="utf-8")
+
+    lines = path.read_text(encoding="utf-8").splitlines()
+    changed: list[tuple[str, str]] = []
+
+    for pair in pairs:
+        if "=" not in pair:
+            raise SystemExit(f"expected key=value, got {pair!r}")
+        key, value = pair.split("=", 1)
+        key = key.strip()
+        section = _section_for(key)
+        rendered = f"{key} = {_toml_value(key, value)}"
+
+        current = None
+        replaced = False
+        for index, line in enumerate(lines):
+            stripped = line.strip()
+            if stripped.startswith("[") and stripped.endswith("]"):
+                current = stripped[1:-1].strip()
+                continue
+            if current == section and stripped.split("=")[0].strip() == key:
+                indent = line[: len(line) - len(line.lstrip())]
+                lines[index] = f"{indent}{rendered}"
+                replaced = True
+                break
+
+        if not replaced:
+            header = f"[{section}]"
+            if header not in [line.strip() for line in lines]:
+                lines.extend(["", header])
+            at = max(index for index, line in enumerate(lines) if line.strip() == header)
+            lines.insert(at + 1, rendered)
+
+        changed.append((key, rendered))
+
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    _refresh(runtime_config, path)
+    return changed
+
+
+def _refresh(runtime_config, path: Path) -> None:
+    """改完文件后把内存里的配置同步过来，同一条命令里 status 才是准的。"""
+    import toml
+
+    parsed = toml.load(str(path))
+    for section in ("app", "bot"):
+        loaded = parsed.get(section)
+        current = getattr(runtime_config, section, None)
+        if isinstance(loaded, dict) and isinstance(current, dict):
+            current.clear()
+            current.update(loaded)
+
+
+def cmd_set(args: argparse.Namespace) -> int:
+    """第一次配置只需要一条命令，不用在 Notepad 里翻 900 行。"""
+    if not args.pairs:
+        return cmd_status(args)
+
+    changed = set_config_values(list(args.pairs))
+    for key, rendered in changed:
+        print(f"  {rendered}")
+
+    from app.bot.autopilot import preflight
+    from app.bot.config import load_settings
+
+    settings = load_settings()
+    blockers = [item for item in preflight(settings) if item["key"] != "delivery"]
+    print()
+    if blockers:
+        print("Still needed:")
+        for item in blockers:
+            print(f"  • {item['why']}")
+            print(f"    → {item['fix']}")
+    else:
+        print("Ready — no missing keys.")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="python -m app.bot.cli",
@@ -481,6 +609,13 @@ def build_parser() -> argparse.ArgumentParser:
 
     status = sub.add_parser("status", help="show bot configuration")
     status.set_defaults(func=cmd_status)
+
+    set_cmd = sub.add_parser(
+        "set",
+        help="write settings into config.toml (e.g. set gemini_api_key=... demo_mode=false)",
+    )
+    set_cmd.add_argument("pairs", nargs="*", help="key=value pairs")
+    set_cmd.set_defaults(func=cmd_set)
 
     serve = sub.add_parser("serve", help="run the chat UI and API")
     serve.add_argument("--host", default="", help="bind address (default 0.0.0.0)")

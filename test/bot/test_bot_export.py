@@ -235,3 +235,42 @@ def test_local_footage_with_an_empty_folder_is_reported(tmp_path, monkeypatch):
     blockers = {item["key"]: item for item in autopilot_service.preflight()}
     assert "footage" in blockers
     assert "local_videos" in blockers["footage"]["fix"]
+
+
+def test_set_writes_each_key_into_the_right_section(tmp_path, monkeypatch):
+    from app.bot import cli
+    from app.config import config as runtime_config
+
+    target = tmp_path / "config.toml"
+    target.write_text('[app]\nllm_provider = "moonshot"\n\n[bot]\ndemo_mode = true\n')
+
+    monkeypatch.setattr(cli, "_config_path", lambda: target)
+    monkeypatch.setattr(runtime_config, "app", {}, raising=False)
+    monkeypatch.setattr(runtime_config, "bot", {}, raising=False)
+
+    cli.set_config_values(
+        [
+            "gemini_api_key=abc123",
+            "pixabay_api_keys=111,222",
+            "video_source=pixabay",
+            "demo_mode=false",
+        ]
+    )
+
+    text = target.read_text()
+    app_part, bot_part = text.split("[bot]")
+    assert 'gemini_api_key = "abc123"' in app_part
+    assert 'pixabay_api_keys = ["111", "222"]' in app_part
+    assert 'video_source = "pixabay"' in app_part
+    assert "demo_mode = false" in bot_part
+    assert "demo_mode = true" not in text
+
+
+def test_video_source_follows_the_app_section(monkeypatch):
+    """两处都写了 video_source，渲染器必须只认一个。"""
+    from app.bot.config import load_settings
+    from app.config import config as runtime_config
+
+    monkeypatch.setitem(runtime_config.app, "video_source", "pixabay")
+    monkeypatch.setitem(runtime_config.bot, "video_source", "pexels")
+    assert load_settings().video_source == "pixabay"
