@@ -427,6 +427,11 @@ def cmd_week(args: argparse.Namespace) -> int:
     result = export.batch_from_topics(core, topics, name=args.name, on_progress=progress)
 
     print()
+    for failure in result.get("errors") or []:
+        print(f"✗ {failure['topic']}")
+        for line in str(failure["error"]).splitlines():
+            print(f"    {line}")
+
     if not result["count"]:
         print(f"✗ No videos were made ({result['failed']} failed).")
         print(f"  Folder: {result['folder']}")

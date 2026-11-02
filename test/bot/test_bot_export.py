@@ -330,3 +330,25 @@ def test_week_reports_a_total_failure_instead_of_a_tick(monkeypatch, capsys):
     out = capsys.readouterr().out
     assert "No videos were made" in out
     assert "✅" not in out
+
+
+def test_failure_reason_reaches_the_user(monkeypatch, capsys):
+    """只报「1 failed」等于什么都没说，具体错误必须打出来。"""
+    from app.bot import cli, export
+
+    monkeypatch.setattr(
+        export,
+        "batch_from_topics",
+        lambda *a, **k: {
+            "count": 0,
+            "folder": "x",
+            "zip": "",
+            "failed": 1,
+            "rows": [],
+            "errors": [{"topic": "t", "error": "503 UNAVAILABLE: high demand"}],
+        },
+    )
+
+    assert cli.main(["week", "--count", "1"]) == 1
+    out = capsys.readouterr().out
+    assert "503 UNAVAILABLE: high demand" in out
