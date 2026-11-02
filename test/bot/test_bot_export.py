@@ -297,3 +297,36 @@ def test_set_refuses_placeholder_keys(capsys):
     code = cli.main(["set", "gemini_api_key=YOUR-GEMINI-KEY"])
     assert code == 2
     assert "placeholder" in capsys.readouterr().out
+
+
+def test_set_routes_model_and_base_url_to_the_app_section(tmp_path, monkeypatch):
+    """gemini_model_name 写进 [bot] 就不会被读到。"""
+    from app.bot import cli
+    from app.config import config as runtime_config
+
+    target = tmp_path / "config.toml"
+    target.write_text('[app]\n\n[bot]\n')
+    monkeypatch.setattr(cli, "_config_path", lambda: target)
+    monkeypatch.setattr(runtime_config, "app", {}, raising=False)
+    monkeypatch.setattr(runtime_config, "bot", {}, raising=False)
+
+    cli.set_config_values(["gemini_model_name=gemini-3.8-flash"])
+    app_part, _bot = target.read_text().split("[bot]")
+    assert 'gemini_model_name = "gemini-3.8-flash"' in app_part
+
+
+def test_week_reports_a_total_failure_instead_of_a_tick(monkeypatch, capsys):
+    from app.bot import cli, export
+
+    monkeypatch.setattr(
+        export,
+        "batch_from_topics",
+        lambda *a, **k: {
+            "count": 0, "folder": "x", "zip": "", "failed": 1, "rows": [],
+        },
+    )
+
+    assert cli.main(["week", "--count", "1"]) == 1
+    out = capsys.readouterr().out
+    assert "No videos were made" in out
+    assert "✅" not in out

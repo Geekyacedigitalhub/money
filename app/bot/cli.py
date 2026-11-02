@@ -427,6 +427,18 @@ def cmd_week(args: argparse.Namespace) -> int:
     result = export.batch_from_topics(core, topics, name=args.name, on_progress=progress)
 
     print()
+    if not result["count"]:
+        print(f"✗ No videos were made ({result['failed']} failed).")
+        print(f"  Folder: {result['folder']}")
+        print()
+        print("Common causes:")
+        print("  • the LLM rejected the request — check the model your provider key can")
+        print("    actually use (free Gemini tiers exclude the pro models):")
+        print("    python -m app.bot.cli set gemini_model_name=gemini-3.8-flash")
+        print("  • the footage search returned nothing — try a broader [bot] autopilot_niche")
+        print("  • the voice service was unreachable — run it again")
+        return 1
+
     print(f"✅ {result['count']} video(s) → {result['folder']}")
     if result["zip"]:
         print(f"📦 {result['zip']}")
@@ -485,7 +497,7 @@ _APP_KEYS = {
     "pixabay_api_keys",
     "coverr_api_keys",
 }
-_APP_SUFFIXES = ("_api_key", "_api_keys")
+_APP_SUFFIXES = ("_api_key", "_api_keys", "_model_name", "_base_url")
 
 
 def _toml_value(key: str, value: str) -> str:
