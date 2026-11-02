@@ -198,3 +198,40 @@ def test_week_still_works_in_demo_mode_without_keys(monkeypatch, capsys):
 
     assert cli.main(["week", "--count", "1"]) == 0
     assert "Cannot make real videos yet" not in capsys.readouterr().err
+
+
+def test_local_footage_needs_no_api_key(tmp_path, monkeypatch):
+    """Pexels 停发新 Key 时的备用方案：自己放片段进 storage/local_videos。"""
+    from app.bot import autopilot as autopilot_service
+    from app.bot import generation
+    from app.config import config
+
+    clips = tmp_path / "local_videos"
+    clips.mkdir()
+    (clips / "a.mp4").write_text("x")
+    monkeypatch.setattr(generation, "_local_videos_dir", lambda: str(clips))
+    monkeypatch.setitem(config.app, "video_source", "local")
+    monkeypatch.setitem(config.app, "pexels_api_keys", [])
+    monkeypatch.setitem(config.bot, "demo_mode", False)
+
+    materials = generation._local_materials("local")
+    assert [m.url for m in materials] == ["a.mp4"]
+
+    keys = {item["key"] for item in autopilot_service.preflight()}
+    assert "footage" not in keys
+
+
+def test_local_footage_with_an_empty_folder_is_reported(tmp_path, monkeypatch):
+    from app.bot import autopilot as autopilot_service
+    from app.bot import generation
+    from app.config import config
+
+    empty = tmp_path / "local_videos"
+    empty.mkdir()
+    monkeypatch.setattr(generation, "_local_videos_dir", lambda: str(empty))
+    monkeypatch.setitem(config.app, "video_source", "local")
+    monkeypatch.setitem(config.bot, "demo_mode", False)
+
+    blockers = {item["key"]: item for item in autopilot_service.preflight()}
+    assert "footage" in blockers
+    assert "local_videos" in blockers["footage"]["fix"]

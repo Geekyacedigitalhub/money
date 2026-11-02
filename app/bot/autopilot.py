@@ -580,20 +580,46 @@ def preflight(settings: BotSettings | None = None) -> list[dict[str, str]]:
             }
         )
 
-    pexels = app_cfg.get("pexels_api_keys") or []
-    if isinstance(pexels, str):
-        pexels = [pexels]
-    if not [item for item in pexels if str(item).strip()]:
-        blockers.append(
-            {
-                "key": "footage",
-                "why": "no stock-footage key: there is nothing to put behind the voice",
-                "fix": (
-                    "get the free Pexels key at https://www.pexels.com/api/ and put "
-                    "it in [app] pexels_api_keys"
-                ),
-            }
-        )
+    source = str(app_cfg.get("video_source") or "").strip().lower()
+    if source == "local":
+        # 本地素材不需要任何 Key，但目录必须真的有片段。
+        from app.bot.generation import _local_materials, _local_videos_dir
+
+        if not _local_materials("local"):
+            blockers.append(
+                {
+                    "key": "footage",
+                    "why": (
+                        "video_source = \"local\" but "
+                        f"{_local_videos_dir()} has no clips in it"
+                    ),
+                    "fix": (
+                        "download a few free stock clips (Pexels/Pixabay/Coverr "
+                        "websites need no API key) and drop the .mp4 files in "
+                        "storage/local_videos"
+                    ),
+                }
+            )
+    else:
+        key_field = f"{source}_api_keys"
+        keys = app_cfg.get(key_field) or []
+        if isinstance(keys, str):
+            keys = [keys]
+        if not [item for item in keys if str(item).strip()]:
+            fix = (
+                "free Pexels keys are paused right now, so either drop clips into "
+                "storage/local_videos and set [app] video_source = \"local\", or "
+                "use https://pixabay.com/api/docs/ and [app] pixabay_api_keys"
+                if source == "pexels"
+                else f"register a free key and put it in [app] {key_field}"
+            )
+            blockers.append(
+                {
+                    "key": "footage",
+                    "why": "no stock-footage key: there is nothing to put behind the voice",
+                    "fix": fix,
+                }
+            )
 
     if settings.delivery == "manual":
         # 手动模式不需要 Upload-Post；只要确认他还知道东西放在哪。

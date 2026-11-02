@@ -158,8 +158,13 @@ pip install -r requirements.txt
 
 **b) Two free keys**
 
-- Footage: https://www.pexels.com/api/ → copy the key
 - Scripts: https://aistudio.google.com/app/apikey → *Create API key* → copy
+- Footage: pick **one** of these
+  - **No key at all (works today)** — download a dozen free clips from
+    https://www.pexels.com/videos/ (or https://coverr.co) by hand and put the
+    `.mp4` files in `storage\local_videos`. Pexels has **paused new API keys**, so
+    this is the reliable route right now.
+  - **Pixabay key** — https://pixabay.com/api/docs/ → free, still issuing keys
 
 **c) Put them in the config**
 
@@ -173,8 +178,10 @@ Find `[app]` and set (keep everything else as it is):
 llm_provider = "gemini"
 gemini_api_key = "paste-the-gemini-key"
 
-video_source = "pexels"
-pexels_api_keys = ["paste-the-pexels-key"]
+# Footage — choose ONE:
+video_source = "local"          # clips you downloaded into storage\local_videos
+# video_source = "pixabay"      # or a free Pixabay key
+# pixabay_api_keys = ["paste-the-pixabay-key"]
 ```
 
 Find `[bot]` and set:
@@ -197,6 +204,20 @@ Now the videos have a real voiceover, real stock footage and subtitles. Expect
 **3–6 minutes per video** — leave it running and check back.
 
 ---
+
+### No footage key? Use your own clips
+
+```powershell
+mkdir storage\local_videos
+start storage\local_videos
+```
+
+Download 10–20 free vertical clips (Pexels / Coverr / Pixabay websites — browsing
+and downloading needs **no API key**), then drop the `.mp4` files in that folder.
+Set `video_source = "local"` in `config.toml`. Every video is cut from those clips,
+so the more variety you collect, the less repetitive the output looks.
+
+Vertical (9:16) footage works best. Aim for 5–15 second clips.
 
 ## Step 7 — Post them (free, ~30 minutes once a week)
 

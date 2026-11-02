@@ -40,6 +40,44 @@ class GenerationResult:
     warnings: list[str] = field(default_factory=list)
 
 
+LOCAL_SOURCE = "local"
+_VIDEO_SUFFIXES = (".mp4", ".mov", ".webm", ".mkv", ".m4v")
+
+
+def _local_videos_dir() -> str:
+    from app.utils import utils
+
+    return utils.storage_dir("local_videos", create=True)
+
+
+def _local_materials(source: str) -> list | None:
+    """``video_source = "local"`` 时，把素材目录里的片段交给渲染器。
+
+    这是唯一一种不需要任何素材 API Key 的方式：用户自己把下载好的片段放进来
+    （Pexels / Pixabay / Coverr 网站都能直接下载，无需申请 Key）。
+    """
+    if str(source or "").strip().lower() != LOCAL_SOURCE:
+        return None
+
+    import os
+
+    from app.models.schema import MaterialInfo
+
+    directory = _local_videos_dir()
+    try:
+        names = sorted(
+            name
+            for name in os.listdir(directory)
+            if name.lower().endswith(_VIDEO_SUFFIXES)
+            and os.path.isfile(os.path.join(directory, name))
+        )
+    except OSError as exc:
+        logger.warning(f"local materials unreadable: {exc}")
+        return []
+
+    return [MaterialInfo(provider="local", url=name) for name in names]
+
+
 def _aspect_value(settings: BotSettings) -> str:
     raw = str(settings.video_aspect or "9:16").strip()
     aliases = {
@@ -131,12 +169,21 @@ def _generate_real(
             "or use demo mode."
         ) from exc
 
+    materials = _local_materials(settings.video_source)
+    if settings.video_source == "local" and not materials:
+        raise GenerationError(
+            "video_source = \"local\" but there are no clips in "
+            f"{_local_videos_dir()} — drop a few .mp4 files there, then retry "
+            "(see WINDOWS.md, 'no stock-footage key')."
+        )
+
     try:
         params = VideoParams(
             video_subject=topic,
             video_script=script or "",
             video_aspect=VideoAspect(_aspect_value(settings)),
             video_source=settings.video_source or "pexels",
+            video_materials=materials,
             voice_name=settings.voice_name or "en-US-AriaNeural-Female",
             video_language=settings.video_language or "",
             paragraph_number=settings.paragraph_number,
