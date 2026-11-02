@@ -120,6 +120,21 @@ for this step. It proves the whole chain works on your machine.
 
 ## Step 5 — Point it at your topic
 
+The first batch used the example's placeholder niche ("personal finance for
+beginners") because `config.toml` is created from `config.example.toml` on first
+run. Change it to yours:
+
+```powershell
+notepad config.toml
+```
+
+```toml
+[bot]
+autopilot_niche = "online income with AI tools in Nigeria"
+```
+
+Or take over the queue completely — these beat any generated topic:
+
 ```powershell
 python -m app.bot.cli topics add "Why your first 100 customers come from WhatsApp" "The 3 invoices every freelancer should send"
 python -m app.bot.cli topics
@@ -134,7 +149,8 @@ line, saved to `storage\bot\autopilot\topics.txt`.
 
 Stop and do this only when step 4 worked.
 
-**a) The full package set** (bigger — 5–10 minutes):
+**a) The full package set** (bigger — 10–20 minutes on a typical Nigerian
+connection; it downloads MoviePy, Whisper, Streamlit and ~300 MB of wheels):
 
 ```powershell
 pip install -r requirements.txt
