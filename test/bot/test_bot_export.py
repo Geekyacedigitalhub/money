@@ -164,3 +164,191 @@ def test_manual_delivery_is_not_a_rehearsal(tmp_path, monkeypatch):
     keys = {item["key"] for item in blockers}
     assert "publish" not in keys
     assert "delivery" in keys
+
+
+def test_week_refuses_to_render_without_keys_when_demo_is_off(monkeypatch, capsys):
+    """关了 demo_mode 却没有 Key，必须先停下，而不是跑几分钟再失败。"""
+    from app.bot import cli
+    from app.config import config
+
+    monkeypatch.setitem(config.bot, "demo_mode", False)
+    monkeypatch.setitem(config.app, "llm_provider", "moonshot")
+    monkeypatch.setitem(config.app, "moonshot_api_key", "")
+    monkeypatch.setitem(config.app, "pexels_api_keys", [])
+
+    code = cli.main(["week", "--count", "1"])
+    captured = capsys.readouterr()
+    assert code == 2
+    assert "Cannot make real videos yet" in captured.err
+    assert "pexels" in captured.err.lower()
+
+
+def test_week_still_works_in_demo_mode_without_keys(monkeypatch, capsys):
+    """演示模式不需要任何 Key —— 这正是新手第一次跑通的方式。"""
+    from app.bot import cli, export
+    from app.config import config
+
+    monkeypatch.setitem(config.bot, "demo_mode", True)
+    monkeypatch.setitem(config.app, "pexels_api_keys", [])
+    monkeypatch.setattr(
+        export,
+        "batch_from_topics",
+        lambda *a, **k: {"count": 1, "folder": "x", "zip": "", "failed": 0, "rows": []},
+    )
+
+    assert cli.main(["week", "--count", "1"]) == 0
+    assert "Cannot make real videos yet" not in capsys.readouterr().err
+
+
+def test_local_footage_needs_no_api_key(tmp_path, monkeypatch):
+    """Pexels 停发新 Key 时的备用方案：自己放片段进 storage/local_videos。"""
+    from app.bot import autopilot as autopilot_service
+    from app.bot import generation
+    from app.config import config
+
+    clips = tmp_path / "local_videos"
+    clips.mkdir()
+    (clips / "a.mp4").write_text("x")
+    monkeypatch.setattr(generation, "_local_videos_dir", lambda: str(clips))
+    monkeypatch.setitem(config.app, "video_source", "local")
+    monkeypatch.setitem(config.app, "pexels_api_keys", [])
+    monkeypatch.setitem(config.bot, "demo_mode", False)
+
+    materials = generation._local_materials("local")
+    assert [m.url for m in materials] == ["a.mp4"]
+
+    keys = {item["key"] for item in autopilot_service.preflight()}
+    assert "footage" not in keys
+
+
+def test_local_footage_with_an_empty_folder_is_reported(tmp_path, monkeypatch):
+    from app.bot import autopilot as autopilot_service
+    from app.bot import generation
+    from app.config import config
+
+    empty = tmp_path / "local_videos"
+    empty.mkdir()
+    monkeypatch.setattr(generation, "_local_videos_dir", lambda: str(empty))
+    monkeypatch.setitem(config.app, "video_source", "local")
+    monkeypatch.setitem(config.bot, "demo_mode", False)
+
+    blockers = {item["key"]: item for item in autopilot_service.preflight()}
+    assert "footage" in blockers
+    assert "local_videos" in blockers["footage"]["fix"]
+
+
+def test_set_writes_each_key_into_the_right_section(tmp_path, monkeypatch):
+    from app.bot import cli
+    from app.config import config as runtime_config
+
+    target = tmp_path / "config.toml"
+    target.write_text('[app]\nllm_provider = "moonshot"\n\n[bot]\ndemo_mode = true\n')
+
+    monkeypatch.setattr(cli, "_config_path", lambda: target)
+    monkeypatch.setattr(runtime_config, "app", {}, raising=False)
+    monkeypatch.setattr(runtime_config, "bot", {}, raising=False)
+
+    cli.set_config_values(
+        [
+            "gemini_api_key=abc123",
+            "pixabay_api_keys=111,222",
+            "video_source=pixabay",
+            "demo_mode=false",
+        ]
+    )
+
+    text = target.read_text()
+    app_part, bot_part = text.split("[bot]")
+    assert 'gemini_api_key = "abc123"' in app_part
+    assert 'pixabay_api_keys = ["111", "222"]' in app_part
+    assert 'video_source = "pixabay"' in app_part
+    assert "demo_mode = false" in bot_part
+    assert "demo_mode = true" not in text
+
+
+def test_video_source_follows_the_app_section(monkeypatch):
+    """两处都写了 video_source，渲染器必须只认一个。"""
+    from app.bot.config import load_settings
+    from app.config import config as runtime_config
+
+    monkeypatch.setitem(runtime_config.app, "video_source", "pixabay")
+    monkeypatch.setitem(runtime_config.bot, "video_source", "pexels")
+    assert load_settings().video_source == "pixabay"
+
+
+def test_set_switches_llm_provider_to_the_key_that_was_given(tmp_path, monkeypatch):
+    """填了 gemini_api_key 却还在查 moonshot_api_key，是最迷惑的一种“没配好”。"""
+    from app.bot import cli
+    from app.config import config as runtime_config
+
+    target = tmp_path / "config.toml"
+    target.write_text('[app]\nllm_provider = "moonshot"\n\n[bot]\n')
+    monkeypatch.setattr(cli, "_config_path", lambda: target)
+    monkeypatch.setattr(runtime_config, "app", {}, raising=False)
+    monkeypatch.setattr(runtime_config, "bot", {}, raising=False)
+
+    cli.set_config_values(["gemini_api_key=abc123"])
+    assert 'llm_provider = "gemini"' in target.read_text()
+
+
+def test_set_refuses_placeholder_keys(capsys):
+    from app.bot import cli
+
+    code = cli.main(["set", "gemini_api_key=YOUR-GEMINI-KEY"])
+    assert code == 2
+    assert "placeholder" in capsys.readouterr().out
+
+
+def test_set_routes_model_and_base_url_to_the_app_section(tmp_path, monkeypatch):
+    """gemini_model_name 写进 [bot] 就不会被读到。"""
+    from app.bot import cli
+    from app.config import config as runtime_config
+
+    target = tmp_path / "config.toml"
+    target.write_text('[app]\n\n[bot]\n')
+    monkeypatch.setattr(cli, "_config_path", lambda: target)
+    monkeypatch.setattr(runtime_config, "app", {}, raising=False)
+    monkeypatch.setattr(runtime_config, "bot", {}, raising=False)
+
+    cli.set_config_values(["gemini_model_name=gemini-3.8-flash"])
+    app_part, _bot = target.read_text().split("[bot]")
+    assert 'gemini_model_name = "gemini-3.8-flash"' in app_part
+
+
+def test_week_reports_a_total_failure_instead_of_a_tick(monkeypatch, capsys):
+    from app.bot import cli, export
+
+    monkeypatch.setattr(
+        export,
+        "batch_from_topics",
+        lambda *a, **k: {
+            "count": 0, "folder": "x", "zip": "", "failed": 1, "rows": [],
+        },
+    )
+
+    assert cli.main(["week", "--count", "1"]) == 1
+    out = capsys.readouterr().out
+    assert "No videos were made" in out
+    assert "✅" not in out
+
+
+def test_failure_reason_reaches_the_user(monkeypatch, capsys):
+    """只报「1 failed」等于什么都没说，具体错误必须打出来。"""
+    from app.bot import cli, export
+
+    monkeypatch.setattr(
+        export,
+        "batch_from_topics",
+        lambda *a, **k: {
+            "count": 0,
+            "folder": "x",
+            "zip": "",
+            "failed": 1,
+            "rows": [],
+            "errors": [{"topic": "t", "error": "503 UNAVAILABLE: high demand"}],
+        },
+    )
+
+    assert cli.main(["week", "--count", "1"]) == 1
+    out = capsys.readouterr().out
+    assert "503 UNAVAILABLE: high demand" in out

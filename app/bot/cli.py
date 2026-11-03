@@ -14,6 +14,7 @@ import argparse
 import os
 import sys
 import time
+from pathlib import Path
 
 from loguru import logger
 
@@ -89,6 +90,11 @@ def cmd_status(_: argparse.Namespace) -> int:
         )
         if status["next_run"]:
             print(f"next run        : {status['next_run']} ({status['timezone']})")
+        blockers = [item for item in status.get("blockers") or [] if item["key"] != "delivery"]
+        if blockers:
+            print("to go live      :")
+            for item in blockers:
+                print(f"  • {item['why']}")
     except Exception as exc:  # noqa: BLE001 - status 不应因为自动运营出错而失败
         print(f"autopilot       : unavailable ({exc})")
     print()
@@ -382,6 +388,29 @@ def cmd_week(args: argparse.Namespace) -> int:
     settings = load_settings()
     count = max(1, int(args.count))
 
+    # 真实渲染动辄几分钟一条。缺 Key 时先停下来，而不是让它跑到一半失败。
+    from app.bot.autopilot import preflight
+
+    if not settings.demo_mode:
+        blockers = {item["key"]: item for item in preflight(settings)}
+        fatal = [
+            blockers[key]
+            for key in ("llm", "footage")
+            if key in blockers
+        ]
+        if fatal:
+            print("Cannot make real videos yet — demo_mode is off but:", file=sys.stderr)
+            for item in fatal:
+                print(f"  • {item['why']}", file=sys.stderr)
+                print(f"    → {item['fix']}", file=sys.stderr)
+            print()
+            print(
+                "Fix those in config.toml, or set [bot] demo_mode = true for "
+                "placeholder renders.",
+                file=sys.stderr,
+            )
+            return 2
+
     topics = list(args.topic or [])
     if not topics:
         auto = Autopilot(settings=settings)
@@ -398,6 +427,23 @@ def cmd_week(args: argparse.Namespace) -> int:
     result = export.batch_from_topics(core, topics, name=args.name, on_progress=progress)
 
     print()
+    for failure in result.get("errors") or []:
+        print(f"✗ {failure['topic']}")
+        for line in str(failure["error"]).splitlines():
+            print(f"    {line}")
+
+    if not result["count"]:
+        print(f"✗ No videos were made ({result['failed']} failed).")
+        print(f"  Folder: {result['folder']}")
+        print()
+        print("Common causes:")
+        print("  • the LLM rejected the request — check the model your provider key can")
+        print("    actually use (free Gemini tiers exclude the pro models):")
+        print("    python -m app.bot.cli set gemini_model_name=gemini-3.8-flash")
+        print("  • the footage search returned nothing — try a broader [bot] autopilot_niche")
+        print("  • the voice service was unreachable — run it again")
+        return 1
+
     print(f"✅ {result['count']} video(s) → {result['folder']}")
     if result["zip"]:
         print(f"📦 {result['zip']}")
@@ -444,6 +490,172 @@ def cmd_doctor(args: argparse.Namespace) -> int:
     return 0 if result.success else 1
 
 
+# 这些键属于 [app]，其余属于 [bot]。用户不必知道 900 行的 config.toml 长什么样。
+_APP_KEYS = {
+    "llm_provider",
+    "video_source",
+    "video_aspect",
+    "voice_name",
+    "subtitle_enabled",
+    "paragraph_number",
+    "pexels_api_keys",
+    "pixabay_api_keys",
+    "coverr_api_keys",
+}
+_APP_SUFFIXES = ("_api_key", "_api_keys", "_model_name", "_base_url")
+
+
+def _toml_value(key: str, value: str) -> str:
+    text = value.strip()
+    low = text.lower()
+    if low in {"true", "false"}:
+        return low
+    if key.endswith("_keys"):
+        items = [part.strip().strip('"').strip("'") for part in text.split(",")]
+        items = [item for item in items if item]
+        return "[" + ", ".join(f'"{item}"' for item in items) + "]"
+    if text.replace(".", "", 1).isdigit():
+        return text
+    return '"' + text.replace('"', "'") + '"'
+
+
+def _section_for(key: str) -> str:
+    if key in _APP_KEYS or key.endswith(_APP_SUFFIXES):
+        return "app"
+    return "bot"
+
+
+def _config_path() -> Path:
+    from app.config import config as runtime_config
+
+    root = getattr(runtime_config, "root_dir", None) or os.getcwd()
+    return Path(root) / "config.toml"
+
+
+def _llm_provider_for(key: str) -> str | None:
+    """``gemini_api_key`` 说明用户想用 gemini —— 顺手把 llm_provider 也改掉。
+
+    否则会出现最迷惑的情况：Key 明明填了，检查还说“没有 LLM Key”，因为
+    llm_provider 还停在默认的 moonshot 上。
+    """
+    if not key.endswith("_api_key"):
+        return None
+    candidate = key[: -len("_api_key")]
+    from app.models.llm_provider import LLM_PROVIDERS
+    return candidate if candidate in LLM_PROVIDERS else None
+
+
+def set_config_values(pairs: list[str]) -> list[tuple[str, str]]:
+    """把 key=value 写进 config.toml 正确的段落，返回改动了什么。"""
+    explicit = {pair.split("=", 1)[0].strip() for pair in pairs if "=" in pair}
+    implied = [
+        (key, _llm_provider_for(key))
+        for key in (pair.split("=", 1)[0].strip() for pair in pairs if "=" in pair)
+    ]
+    for key, provider in implied:
+        if provider and "llm_provider" not in explicit:
+            pairs = list(pairs) + [f"llm_provider={provider}"]
+            explicit.add("llm_provider")
+    from app.config import config as runtime_config
+
+    path = _config_path()
+    if not path.exists():
+        example = path.parent / "config.example.toml"
+        path.write_text(example.read_text(encoding="utf-8"), encoding="utf-8")
+
+    lines = path.read_text(encoding="utf-8").splitlines()
+    changed: list[tuple[str, str]] = []
+
+    for pair in pairs:
+        if "=" not in pair:
+            raise SystemExit(f"expected key=value, got {pair!r}")
+        key, value = pair.split("=", 1)
+        key = key.strip()
+        section = _section_for(key)
+        rendered = f"{key} = {_toml_value(key, value)}"
+
+        current = None
+        replaced = False
+        for index, line in enumerate(lines):
+            stripped = line.strip()
+            if stripped.startswith("[") and stripped.endswith("]"):
+                current = stripped[1:-1].strip()
+                continue
+            if current == section and stripped.split("=")[0].strip() == key:
+                indent = line[: len(line) - len(line.lstrip())]
+                lines[index] = f"{indent}{rendered}"
+                replaced = True
+                break
+
+        if not replaced:
+            header = f"[{section}]"
+            if header not in [line.strip() for line in lines]:
+                lines.extend(["", header])
+            at = max(index for index, line in enumerate(lines) if line.strip() == header)
+            lines.insert(at + 1, rendered)
+
+        changed.append((key, rendered))
+
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    _refresh(runtime_config, path)
+    return changed
+
+
+def _refresh(runtime_config, path: Path) -> None:
+    """改完文件后把内存里的配置同步过来，同一条命令里 status 才是准的。"""
+    import toml
+
+    parsed = toml.load(str(path))
+    for section in ("app", "bot"):
+        loaded = parsed.get(section)
+        current = getattr(runtime_config, section, None)
+        if isinstance(loaded, dict) and isinstance(current, dict):
+            current.clear()
+            current.update(loaded)
+
+
+_PLACEHOLDERS = ("YOUR-", "YOUR_", "PASTE", "XXXX", "<", "...")
+
+
+def _looks_like_placeholder(value: str) -> bool:
+    text = value.strip().strip('"').strip("'").upper()
+    return any(marker in text for marker in _PLACEHOLDERS)
+
+
+def cmd_set(args: argparse.Namespace) -> int:
+    """第一次配置只需要一条命令，不用在 Notepad 里翻 900 行。"""
+    if not args.pairs:
+        return cmd_status(args)
+
+    for pair in args.pairs:
+        if "=" not in pair:
+            continue
+        key, value = pair.split("=", 1)
+        if _looks_like_placeholder(value):
+            print(f"✗ {key.strip()} still looks like a placeholder: {value.strip()}")
+            print("  Paste the real value — no quotes, no <brackets>.")
+            return 2
+
+    changed = set_config_values(list(args.pairs))
+    for key, rendered in changed:
+        print(f"  {rendered}")
+
+    from app.bot.autopilot import preflight
+    from app.bot.config import load_settings
+
+    settings = load_settings()
+    blockers = [item for item in preflight(settings) if item["key"] != "delivery"]
+    print()
+    if blockers:
+        print("Still needed:")
+        for item in blockers:
+            print(f"  • {item['why']}")
+            print(f"    → {item['fix']}")
+    else:
+        print("Ready — no missing keys.")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="python -m app.bot.cli",
@@ -453,6 +665,13 @@ def build_parser() -> argparse.ArgumentParser:
 
     status = sub.add_parser("status", help="show bot configuration")
     status.set_defaults(func=cmd_status)
+
+    set_cmd = sub.add_parser(
+        "set",
+        help="write settings into config.toml (e.g. set gemini_api_key=... demo_mode=false)",
+    )
+    set_cmd.add_argument("pairs", nargs="*", help="key=value pairs")
+    set_cmd.set_defaults(func=cmd_set)
 
     serve = sub.add_parser("serve", help="run the chat UI and API")
     serve.add_argument("--host", default="", help="bind address (default 0.0.0.0)")
@@ -563,14 +782,27 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _sink(message) -> None:
+    # 每次写入时才去取 sys.stderr：被进程内调用（测试、嵌入）时，直接绑定
+    # sys.stderr 会把 handler 钉在一个随后会被关闭的流上，之后所有日志都会
+    # 抛 "I/O operation on closed file"，把别人的输出搅乱。
+    sys.stderr.write(message)
+
+
+# 只有真的从命令行启动（python -m app.bot.cli）时才动全局日志配置。进程内调用
+# ——测试、或别的程序 import 之后调用——必须保持调用方的日志原样。
+_CLI_ENTRY_POINT = __name__ == "__main__"
+
+
 def main(argv: list[str] | None = None) -> int:
     # 命令行输出要能被脚本解析，因此把 loguru 的 INFO 噪音降到 stderr 且只保留
     # 警告以上；真正的错误仍然可见。
-    try:
-        logger.remove()
-        logger.add(sys.stderr, level="WARNING")
-    except Exception:  # noqa: BLE001, S110 - 日志系统不可用时也要能继续执行
-        pass
+    if _CLI_ENTRY_POINT:
+        try:
+            logger.remove()
+            logger.add(_sink, level="WARNING")
+        except Exception:  # noqa: BLE001, S110 - 日志系统不可用时也要能继续执行
+            pass
 
     parser = build_parser()
     args = parser.parse_args(argv)

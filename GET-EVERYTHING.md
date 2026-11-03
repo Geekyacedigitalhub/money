@@ -69,6 +69,8 @@ say so and skip it. It starts working the day you upgrade, with no code change.
 
 ---
 
+> **On Windows?** [WINDOWS.md](WINDOWS.md) has the exact PowerShell commands.
+>
 > **Doing this without a card?** Then skip steps 3–7 entirely and use
 > [SCHEDULING.md](SCHEDULING.md) instead: make the videos on your own computer with
 > `python -m app.bot.cli week`, then schedule them with Meta Business Suite,

@@ -213,6 +213,11 @@ def _raw() -> dict[str, Any]:
     return dict(section) if isinstance(section, dict) else {}
 
 
+def _app_raw() -> dict[str, Any]:
+    section = getattr(config, "app", None)
+    return dict(section) if isinstance(section, dict) else {}
+
+
 def load_settings() -> BotSettings:
     """读取 ``[bot]`` 配置段并叠加环境变量覆盖。"""
     raw = _raw()
@@ -246,7 +251,13 @@ def load_settings() -> BotSettings:
         ),
         auto_publish=_as_bool(raw.get("auto_publish"), defaults.auto_publish),
         video_aspect=str(raw.get("video_aspect") or defaults.video_aspect),
-        video_source=str(raw.get("video_source") or defaults.video_source),
+        # config.toml 在 [app] 和 [bot] 里都写了 video_source，渲染器只认一个：
+        # 以 [app] 为准，[bot] 里的旧值只作兜底，避免两处写法互相打架。
+        video_source=str(
+            _app_raw().get("video_source")
+            or raw.get("video_source")
+            or defaults.video_source
+        ),
         voice_name=str(raw.get("voice_name") or defaults.voice_name),
         video_language=str(raw.get("video_language") or ""),
         subtitle_enabled=_as_bool(

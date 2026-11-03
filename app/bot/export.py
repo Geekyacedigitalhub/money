@@ -244,6 +244,12 @@ def write_batch(
         "count": len(ok_items),
         "failed": len(items) - len(ok_items),
         "rows": rows,
+        # 失败原因必须带出来：只报“1 failed”用户完全无从下手。
+        "errors": [
+            {"topic": item.topic, "error": item.error or "generation failed"}
+            for item in items
+            if not item.ok
+        ],
     }
 
 

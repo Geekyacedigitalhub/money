@@ -909,7 +909,7 @@ autopilot_publish = true                         # false = generate, never post
 
 # --- video defaults -------------------------------------------------------
 video_aspect = "9:16"                  # "9:16", "16:9", "1:1"
-video_source = "pexels"                # pexels / pixabay / coverr / local / ...
+video_source = "pexels"                # 已废弃：请改 [app] 里的同名项（这里只作兜底）
 voice_name = "en-US-AriaNeural-Female"
 video_language = ""                    # empty = auto detect
 subtitle_enabled = true
