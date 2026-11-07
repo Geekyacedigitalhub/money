@@ -28,6 +28,7 @@ Get-PSDrive C | Select-Object @{n='Free_GB';e={[math]::Round($_.Free/1GB,1)}}
 |---|---|
 | 8 GB+ | everything works, use `whisper_model_size=small` and forget it |
 | 4 GB | fine with `small` |
+| **3 GB** | workable, but **only with the larger pagefile in 2b** and `small` |
 | 2 GB | tight. Render one video at a time, expect slow |
 | 1 GB | not enough for video rendering. Resize the plan |
 
@@ -36,27 +37,44 @@ roughly 6 GB together.
 
 ## 2. Install Python 3.12
 
-```powershell
-winget install --id Python.Python.3.12 -e --source winget
-```
-
-If `winget` is missing (older Server images):
+`winget` is **not** on Windows Server — it ships with desktop Windows only. So
+download the installers directly.
 
 ```powershell
-Invoke-WebRequest https://www.python.org/ftp/python/3.12.10/python-3.12.10-amd64.exe -OutFile $env:TEMP\py.exe
-& $env:TEMP\py.exe /quiet InstallAllUsers=1 PrependPath=1 Include_pip=1
+Invoke-WebRequest -Uri https://www.python.org/ftp/python/3.12.10/python-3.12.10-amd64.exe -OutFile $env:TEMP\python.exe
 ```
 
-Close and reopen PowerShell, then confirm:
+```powershell
+& $env:TEMP\python.exe /quiet InstallAllUsers=1 PrependPath=1 Include_pip=1 Include_launcher=1
+```
+
+Give it a minute to work silently. Then close and reopen PowerShell, and confirm:
 
 ```powershell
 py -0p
 ```
 
+## 2b. Enlarge the pagefile (3-4 GB machines only)
+
+With 3 GB of RAM a render will run out of memory and die with no useful message.
+Windows can borrow from disk instead — slower, but it finishes.
+
+One line:
+
+```powershell
+$cs=Get-WmiObject Win32_ComputerSystem -EnableAllPrivileges; $cs.AutomaticManagedPagefile=$false; $cs.Put() | Out-Null; Set-WmiInstance -Class Win32_PageFileSetting -Arguments @{Name='C:\pagefile.sys';InitialSize=2048;MaximumSize=8192} | Out-Null; Get-CimInstance Win32_PageFileSetting
+```
+
+Then **restart the server** for it to take effect. Reconnect over RDP afterwards.
+
 ## 3. Install git, then the project
 
 ```powershell
-winget install --id Git.Git -e --source winget
+Invoke-WebRequest -Uri https://github.com/git-for-windows/git/releases/download/v2.56.0.windows.4/Git-2.56.0.4-64-bit.exe -OutFile $env:TEMP\git.exe
+```
+
+```powershell
+& $env:TEMP\git.exe /VERYSILENT /NORESTART
 ```
 
 Reopen PowerShell again, then:
@@ -166,6 +184,8 @@ with HTTPS later — a bare port with no TLS sends your password in clear text.
 
 | Symptom | Cause | Fix |
 |---|---|---|
+| `winget` is not recognized | Server images have no winget | use the `Invoke-WebRequest` installers in steps 2 and 3 |
+| `py` is not recognized | PATH not refreshed | close **and reopen** PowerShell (or sign out of RDP and back in) |
 | task state `Ready`, nothing happens | wrong `-RootDir` | re-run the installer with `-RootDir C:\money` |
 | `ModuleNotFoundError` in the log | venv half-installed | `pip install -r requirements.txt` again |
 | bot dies during render | RAM | lower `whisper_model_size`, close other apps, resize |
