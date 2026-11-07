@@ -95,7 +95,20 @@ Invoke-WebRequest -Uri https://github.com/git-for-windows/git/releases/download/
 & $env:TEMP\git.exe /VERYSILENT /NORESTART
 ```
 
-Reopen PowerShell again, then:
+**`git` not recognized?** The installer finished, but this PowerShell window still
+has the PATH it started with. Either open a new window, or refresh it in place:
+
+```powershell
+$env:Path = [Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [Environment]::GetEnvironmentVariable("Path","User")
+```
+
+Check it worked before going on:
+
+```powershell
+git --version
+```
+
+Then:
 
 ```powershell
 cd C:\
@@ -206,6 +219,7 @@ with HTTPS later — a bare port with no TLS sends your password in clear text.
 |---|---|---|
 | `winget` is not recognized | Server images have no winget | use the `Invoke-WebRequest` installers in steps 2 and 3 |
 | `py` is not recognized | PATH not refreshed | close **and reopen** PowerShell (or sign out of RDP and back in) |
+| `git` is not recognized | same: PATH not refreshed | open a new window, or run the one-liner below |
 | task state `Ready`, nothing happens | wrong `-RootDir` | re-run the installer with `-RootDir C:\money` |
 | `ModuleNotFoundError` in the log | venv half-installed | `pip install -r requirements.txt` again |
 | bot dies during render | RAM | lower `whisper_model_size`, close other apps, resize |
