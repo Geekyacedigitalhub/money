@@ -62,7 +62,25 @@ Windows can borrow from disk instead — slower, but it finishes.
 One line:
 
 ```powershell
-$cs=Get-WmiObject Win32_ComputerSystem -EnableAllPrivileges; $cs.AutomaticManagedPagefile=$false; $cs.Put() | Out-Null; Set-WmiInstance -Class Win32_PageFileSetting -Arguments @{Name='C:\pagefile.sys';InitialSize=2048;MaximumSize=8192} | Out-Null; Get-CimInstance Win32_PageFileSetting
+Get-CimInstance Win32_PageFileSetting | Set-CimInstance -Property @{InitialSize=2048; MaximumSize=8192}
+```
+
+`Set-WmiInstance` fails here with **"Object or property already exists"** on
+Server images, because the pagefile entry is created before you touch it. Setting
+the existing entry works.
+
+If that also refuses:
+
+```powershell
+reg add "HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management" /v PagingFiles /t REG_MULTI_SZ /d "C:\pagefile.sys 2048 8192" /f
+```
+
+Either way, confirm before restarting — `AutomaticManagedPagefile` must be `False`
+and `MaximumSize` must be `8192`:
+
+```powershell
+Get-CimInstance Win32_ComputerSystem | Select-Object AutomaticManagedPagefile
+Get-CimInstance Win32_PageFileSetting | Select-Object InitialSize, MaximumSize
 ```
 
 Then **restart the server** for it to take effect. Reconnect over RDP afterwards.
