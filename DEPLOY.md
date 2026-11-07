@@ -131,6 +131,32 @@ docker compose -f deploy/docker-compose.yml exec bot python -m app.bot.cli statu
 `publishing : LIVE via upload-post` and `autopilot : live` mean it's actually
 posting. Anything else names the missing key.
 
+## 4b. The first render on a small server
+
+Whisper (the subtitle engine) defaults to `large-v3`: a **~3 GB download** and
+roughly 2 GB of RAM while it transcribes. On a 4 GB box that is the difference
+between a video and a dead container, and on 2 GB it will not finish.
+
+Set it before the first batch:
+
+```bash
+docker compose -f deploy/docker-compose.yml exec bot \
+  python -m app.bot.cli set whisper_model_size=small
+docker compose -f deploy/docker-compose.yml restart bot
+```
+
+| `model_size` | Download | RAM (int8) | Verdict on 2 vCPU |
+|---|---|---|---|
+| `large-v3` | ~3.1 GB | ~2 GB | swap, sometimes OOM |
+| `small` | ~500 MB | ~700 MB | **the default for a small VPS** |
+| `base` | ~150 MB | ~400 MB | fastest, more subtitle typos |
+
+Accuracy on 60-second shorts barely differs between `small` and `large-v3`;
+`base` is noticeably rougher but still readable.
+
+One video takes **6–15 minutes** on 2 vCPU. That is fine for a nightly batch and
+hopeless if you are waiting for it. Start the batch and come back.
+
 ## 5. Prove it from the outside
 
 ```bash

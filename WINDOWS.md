@@ -219,7 +219,73 @@ so the more variety you collect, the less repetitive the output looks.
 
 Vertical (9:16) footage works best. Aim for 5–15 second clips.
 
-## Step 7 — Post them (free, ~30 minutes once a week)
+
+## Have a Windows VPS? Read this instead
+
+A server that stays on is the answer to "my PC keeps going off". If your hosting
+is Windows (RDP), the setup is the same as below, plus an autostart task so it
+runs forever without you: **[deploy/windows/VPS.md](deploy/windows/VPS.md)**.
+
+## Posting for free, with no subscription
+
+`[bot] delivery = "direct"` makes the bot post through each platform's own API.
+No monthly fee. The trade is a one-time authorisation per platform.
+
+| Platform | Cost | Setup | Status |
+|---|---|---|---|
+| YouTube | free (6 uploads/day quota) | ~20 min, one Google OAuth client | works now |
+| Facebook Page | free | ~15 min, paste a Page token | works now |
+| Instagram | free | needs a public video URL + Meta app | next |
+| TikTok | free | needs an app audit before public posts | audit-gated |
+
+YouTube first — it is the one where Nigerian creators actually get paid.
+
+### Connect YouTube
+
+```powershell
+python -m app.bot.cli connect youtube
+```
+
+It prints a Google address. Open it, pick your channel's Google account, approve
+it. The browser then lands on a page that fails to load — that is expected; the
+code is in the address bar (`http://localhost:8765/?code=4/0A...`).
+
+Copy everything after `code=` and finish:
+
+```powershell
+python -m app.bot.cli connect youtube --code 4/0A...
+```
+
+Then switch delivery on:
+
+```powershell
+python -m app.bot.cli set delivery=direct
+```
+
+### Connect a Facebook Page
+
+```powershell
+python -m app.bot.cli connect facebook
+```
+
+It prints the five clicks in the Meta developer console. You end up with a Page
+ID and a Page token; paste them:
+
+```powershell
+python -m app.bot.cli connect facebook --page-id 123456789 --token EAAB...
+```
+
+The bot checks the token against Meta before saving it, so a typo is caught
+immediately instead of at posting time.
+
+### Check what is connected
+
+```powershell
+python -m app.bot.cli connect
+```
+
+## Post them
+ (free, ~30 minutes once a week)
 
 Full instructions with the links: [SCHEDULING.md](SCHEDULING.md)
 
