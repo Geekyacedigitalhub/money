@@ -205,6 +205,17 @@ class SimulatedPublisher:
 
 def build_publisher(settings: BotSettings, receipt_dir: str | None = None) -> Publisher:
     """有配置就用真实发布器，否则用模拟发布器。"""
+    if settings.delivery == "direct":
+        # 免费直连：各平台自己的 API，没有订阅费。导入放在这里，
+        # app.bot.direct 反过来要用本模块的 PlatformResult。
+        from app.bot.direct import DirectPublisher
+
+        direct = DirectPublisher()
+        if direct.live:
+            return direct
+        logger.info("no platform is connected for direct publishing; simulating")
+        return SimulatedPublisher(receipt_dir)
+
     publisher = UploadPostPublisher()
     if publisher.live:
         return publisher

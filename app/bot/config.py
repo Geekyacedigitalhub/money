@@ -87,9 +87,13 @@ def is_temporary_url(url: str) -> bool:
 
 
 def _as_delivery(value: Any) -> str:
-    """只接受两种取值；写错时回落到 upload_post，而不是悄悄变成手动。"""
+    """认三种取值；写错时回落到 upload_post，而不是悄悄变成手动。"""
     text = str(value or "").strip().lower().replace("-", "_")
-    return "manual" if text in {"manual", "hand", "human", "week"} else "upload_post"
+    if text in {"manual", "hand", "human", "week"}:
+        return "manual"
+    if text in {"direct", "free", "native", "api"}:
+        return "direct"
+    return "upload_post"
 
 
 def _as_url(value: Any) -> str:
@@ -170,7 +174,8 @@ class BotSettings:
     # 自己的选题清单；留空 = storage/bot/autopilot/topics.txt
     autopilot_topics_file: str = ""
     # 成品怎么出去：
-    #   "upload_post" = 机器人直接发（需要 Upload-Post Key）
+    #   "upload_post" = 机器人直接发（需要 Upload-Post Key，$24/月）
+    #   "direct"      = 机器人直接发，走各平台自己的免费 API（需要各平台授权一次）
     #   "manual"      = 只做视频，用 /week 打包，人工上传到平台自带的免费定时工具
     delivery: str = "upload_post"
     # 你自己的公开地址（自定义域名 / 隧道 / VPS），用于 /link 和二维码。

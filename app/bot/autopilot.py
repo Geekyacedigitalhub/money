@@ -635,6 +635,34 @@ def preflight(settings: BotSettings | None = None) -> list[dict[str, str]]:
         )
         return blockers
 
+    if settings.delivery == "direct":
+        # 免费直连：不查 Upload-Post，检查每个平台自己的令牌。
+        from app.bot import direct
+
+        missing = direct.missing_setup()
+        if direct.ready_count() == 0:
+            blockers.append(
+                {
+                    "key": "publish",
+                    "why": "delivery = direct, but no platform account is connected",
+                    "fix": (
+                        "connect at least one for free — "
+                        "`python -m app.bot.cli connect youtube` or "
+                        "`python -m app.bot.cli connect facebook`"
+                    ),
+                }
+            )
+        elif missing:
+            blockers.append(
+                {
+                    "key": "publish",
+                    "why": "delivery = direct; these platforms will be skipped: "
+                    + "; ".join(missing),
+                    "fix": "run `python -m app.bot.cli connect status` for the next step",
+                }
+            )
+        return blockers
+
     ready, reason = publish_account_ready()
     if not ready:
         blockers.append(

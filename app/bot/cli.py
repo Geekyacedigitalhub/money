@@ -504,6 +504,13 @@ _APP_KEYS = {
 }
 _APP_SUFFIXES = ("_api_key", "_api_keys", "_model_name", "_base_url")
 
+# 直连发布用的应用凭据不属于 [app]，也不属于 [bot]。
+_DIRECT_KEYS = {
+    "youtube_client_id",
+    "youtube_client_secret",
+    "youtube_channel_id",
+}
+
 # 友好名字 → (真正的段落, 真正的键)。用户在 VPS 上没有编辑器可用，只能靠这一条命令。
 _ALIASES: dict[str, tuple[str, str]] = {
     "whisper_model_size": ("whisper", "model_size"),
@@ -527,6 +534,8 @@ def _toml_value(key: str, value: str) -> str:
 
 
 def _section_for(key: str) -> str:
+    if key in _DIRECT_KEYS:
+        return "direct"
     if key in _ALIASES:
         return _ALIASES[key][0]
     if key in _APP_KEYS or key.endswith(_APP_SUFFIXES):
@@ -616,7 +625,7 @@ def _refresh(runtime_config, path: Path) -> None:
     import toml
 
     parsed = toml.load(str(path))
-    for section in ("app", "bot", "whisper"):
+    for section in ("app", "bot", "whisper", "direct"):
         loaded = parsed.get(section)
         current = getattr(runtime_config, section, None)
         if isinstance(loaded, dict) and isinstance(current, dict):
@@ -663,6 +672,103 @@ def cmd_set(args: argparse.Namespace) -> int:
             print(f"    → {item['fix']}")
     else:
         print("Ready — no missing keys.")
+    return 0
+
+
+def cmd_connect(args: argparse.Namespace) -> int:
+    """把平台账号连到机器人上（免费直连模式）。
+
+    在 VPS 上没有浏览器，所以 YouTube 用回环地址授权、把 code 粘回来；
+    Facebook 直接粘一个 Page Token 就行。
+    """
+    from app.bot import direct
+
+    platform = args.platform
+
+    if not platform or platform == "status":
+        rows = direct.status_lines()
+        if not rows:
+            print("nothing to connect")
+            return 0
+        for item, ok, reason in rows:
+            mark = "✓" if ok else "✗"
+            print(f"  {mark} {item.value:<10} {reason or 'connected'}")
+        print()
+        print("Connect with:  python -m app.bot.cli connect youtube|facebook")
+        return 0
+
+    if platform == "youtube":
+        return _connect_youtube(args)
+    if platform == "facebook":
+        return _connect_facebook(args)
+    if platform in {"instagram", "tiktok"}:
+        print(f"{platform} is not on the free path yet.")
+        print("Use /week and upload it yourself, or connect Upload-Post for it.")
+        return 2
+
+    print(f"unknown platform: {platform}")
+    return 2
+
+
+def _connect_youtube(args: argparse.Namespace) -> int:
+    from app.bot.direct import youtube
+
+    client_id, client_secret = youtube.client_credentials()
+    if not client_id or not client_secret:
+        print("First, create a free Google OAuth client and save its two values:")
+        print()
+        print("  1. console.cloud.google.com -> new project")
+        print("  2. APIs & Services -> Library -> enable 'YouTube Data API v3'")
+        print("  3. APIs & Services -> OAuth consent screen -> External -> add your")
+        print("     own Google account as a Test user")
+        print("  4. Credentials -> Create credentials -> OAuth client ID ->")
+        print("     application type 'Desktop app' -> copy the client id and secret")
+        print()
+        print("Then run:")
+        print("  python -m app.bot.cli set youtube_client_id=... youtube_client_secret=...")
+        return 2
+
+    if args.code:
+        youtube.exchange_code(args.code)
+        print("✓ YouTube connected. The refresh token is stored on this machine.")
+        return 0
+
+    print("Open this address in a browser on any device:")
+    print()
+    print("  " + youtube.authorize_url(client_id))
+    print()
+    print("Sign in, approve, and the browser will land on a page that fails to load")
+    print("(http://localhost:8765/?code=...). That is expected: copy the `code=`")
+    print("value out of the address bar and paste it back here:")
+    print()
+    print("  python -m app.bot.cli connect youtube --code THE-CODE")
+    return 0
+
+
+def _connect_facebook(args: argparse.Namespace) -> int:
+    from app.bot.direct import facebook
+
+    if not args.page_id:
+        print("Two values, both from Meta, five minutes total:")
+        print()
+        print("  1. developers.facebook.com -> Create app -> type 'Business'")
+        print("  2. Open the Graph API Explorer, choose your app, and request the")
+        print("     permissions: pages_show_list, pages_manage_posts, pages_read_engagement")
+        print("  3. Generate an access token, then exchange it for a long-lived Page")
+        print("     token (GET /me/accounts with your user token)")
+        print("  4. Copy the Page ID and that Page token")
+        print()
+        print("Then run:")
+        print("  python -m app.bot.cli connect facebook --page-id 123456789 --token THE-TOKEN")
+        return 2
+
+    try:
+        record = facebook.connect(args.page_id, args.token or "")
+    except RuntimeError as exc:
+        print(f"✗ {exc}")
+        return 2
+
+    print(f"✓ connected to the Page '{record.get('page_name')}' ({args.page_id})")
     return 0
 
 
@@ -759,6 +865,18 @@ def build_parser() -> argparse.ArgumentParser:
     topics.add_argument("--no-publish", action="store_true")
     topics.add_argument("--dry-run", action="store_true")
     topics.set_defaults(func=cmd_topics)
+
+    connect = sub.add_parser(
+        "connect",
+        help="link a platform account for free direct publishing (no subscription)",
+    )
+    connect.add_argument(
+        "platform", nargs="?", default="status", help="youtube | facebook | status"
+    )
+    connect.add_argument("--code", default="", help="the code= value from the Google redirect")
+    connect.add_argument("--page-id", default="", help="Facebook Page id")
+    connect.add_argument("--token", default="", help="Facebook Page access token")
+    connect.set_defaults(func=cmd_connect)
 
     week = sub.add_parser(
         "week", help="make a batch of videos and package them for manual scheduling"

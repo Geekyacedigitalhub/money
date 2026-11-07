@@ -940,3 +940,11 @@ youtube_made_for_kids = false
 #   upload_post_platforms = ["tiktok", "instagram", "facebook", "youtube"]
 # Until those are set, the bot runs in "simulated publish" mode: it prepares the
 # full payload and writes a receipt under storage/bot/receipts/ without posting.
+
+[direct]
+# 免费直连发布（[bot] delivery = "direct"）。不需要任何订阅。
+# 每个平台授权一次，令牌保存在 storage/bot/direct/tokens.json，不进配置文件。
+#
+# YouTube：Google Cloud -> 启用 YouTube Data API v3 -> OAuth client (Desktop app)
+youtube_client_id = ""
+youtube_client_secret = ""
