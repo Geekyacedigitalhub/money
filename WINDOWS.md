@@ -220,6 +220,12 @@ so the more variety you collect, the less repetitive the output looks.
 Vertical (9:16) footage works best. Aim for 5–15 second clips.
 
 
+## Have a Windows VPS? Read this instead
+
+A server that stays on is the answer to "my PC keeps going off". If your hosting
+is Windows (RDP), the setup is the same as below, plus an autostart task so it
+runs forever without you: **[deploy/windows/VPS.md](deploy/windows/VPS.md)**.
+
 ## Posting for free, with no subscription
 
 `[bot] delivery = "direct"` makes the bot post through each platform's own API.
