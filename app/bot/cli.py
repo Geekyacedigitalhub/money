@@ -504,6 +504,13 @@ _APP_KEYS = {
 }
 _APP_SUFFIXES = ("_api_key", "_api_keys", "_model_name", "_base_url")
 
+# 友好名字 → (真正的段落, 真正的键)。用户在 VPS 上没有编辑器可用，只能靠这一条命令。
+_ALIASES: dict[str, tuple[str, str]] = {
+    "whisper_model_size": ("whisper", "model_size"),
+    "whisper_device": ("whisper", "device"),
+    "whisper_compute_type": ("whisper", "compute_type"),
+}
+
 
 def _toml_value(key: str, value: str) -> str:
     text = value.strip()
@@ -520,6 +527,8 @@ def _toml_value(key: str, value: str) -> str:
 
 
 def _section_for(key: str) -> str:
+    if key in _ALIASES:
+        return _ALIASES[key][0]
     if key in _APP_KEYS or key.endswith(_APP_SUFFIXES):
         return "app"
     return "bot"
@@ -572,6 +581,7 @@ def set_config_values(pairs: list[str]) -> list[tuple[str, str]]:
         key, value = pair.split("=", 1)
         key = key.strip()
         section = _section_for(key)
+        key = _ALIASES.get(key, (section, key))[1]
         rendered = f"{key} = {_toml_value(key, value)}"
 
         current = None
@@ -606,7 +616,7 @@ def _refresh(runtime_config, path: Path) -> None:
     import toml
 
     parsed = toml.load(str(path))
-    for section in ("app", "bot"):
+    for section in ("app", "bot", "whisper"):
         loaded = parsed.get(section)
         current = getattr(runtime_config, section, None)
         if isinstance(loaded, dict) and isinstance(current, dict):

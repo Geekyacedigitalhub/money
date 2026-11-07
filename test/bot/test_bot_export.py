@@ -352,3 +352,24 @@ def test_failure_reason_reaches_the_user(monkeypatch, capsys):
     assert cli.main(["week", "--count", "1"]) == 1
     out = capsys.readouterr().out
     assert "503 UNAVAILABLE: high demand" in out
+
+
+def test_whisper_settings_land_in_the_whisper_section(tmp_path, monkeypatch):
+    """小内存 VPS 上必须能换掉 large-v3，而 model_size 只属于 [whisper]。"""
+    from app.bot import cli
+    from app.config import config as runtime_config
+
+    target = tmp_path / "config.toml"
+    target.write_text('[whisper]\nmodel_size = "large-v3"\n\n[app]\n\n[bot]\n')
+    monkeypatch.setattr(cli, "_config_path", lambda: target)
+    monkeypatch.setattr(runtime_config, "app", {}, raising=False)
+    monkeypatch.setattr(runtime_config, "bot", {}, raising=False)
+    monkeypatch.setattr(runtime_config, "whisper", {}, raising=False)
+
+    cli.set_config_values(["whisper_model_size=small"])
+
+    text = target.read_text()
+    whisper_part = text.split("[app]")[0]
+    assert 'model_size = "small"' in whisper_part
+    assert "large-v3" not in text
+    assert "whisper_model_size" not in text
