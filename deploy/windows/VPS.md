@@ -124,7 +124,9 @@ python -m app.bot.cli set whisper_model_size=small whisper_compute_type=int8
 python -m app.bot.cli status
 ```
 
-It should say `Ready` — or name exactly what is still missing.
+It should say `Ready` — or name exactly what is still missing. It also prints a
+`memory` line with the RAM and pagefile it can see, and `week` refuses to start a
+long render on a machine that will not survive it.
 
 ## 5. Prove it renders, once, while you watch
 

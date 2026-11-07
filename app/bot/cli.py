@@ -53,6 +53,14 @@ def cmd_status(_: argparse.Namespace) -> int:
         print(f"owner           : {settings.greeting_name}")
     print(f"generation mode : {'DEMO (placeholder renders)' if settings.demo_mode else 'LIVE'}")
     print(f"video source    : {settings.video_source}")
+    from app.bot import sysreq
+
+    memory = sysreq.windows_memory()
+    if memory is not None:
+        print(
+            f"memory          : {memory.total_ram_mb} MB RAM + "
+            f"{memory.total_pagefile_mb} MB pagefile"
+        )
     print(f"voice           : {settings.voice_name}")
     print(f"aspect          : {settings.video_aspect}")
     print(f"auto-publish    : {'on' if settings.auto_publish else 'off (you approve each post)'}")
@@ -422,6 +430,11 @@ def cmd_week(args: argparse.Namespace) -> int:
 
     def progress(index: int, total: int, topic: str) -> None:
         print(f"[{index}/{total}] {topic}", flush=True)
+
+    from app.bot import sysreq
+
+    for note in sysreq.warnings():
+        print(f"⚠️  {note}\n")
 
     print(f"Making {len(topics)} video(s). Each one takes a few minutes.\n")
     result = export.batch_from_topics(core, topics, name=args.name, on_progress=progress)

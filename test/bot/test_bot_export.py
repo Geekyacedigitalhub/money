@@ -373,3 +373,37 @@ def test_whisper_settings_land_in_the_whisper_section(tmp_path, monkeypatch):
     assert 'model_size = "small"' in whisper_part
     assert "large-v3" not in text
     assert "whisper_model_size" not in text
+
+
+def test_a_tiny_pagefile_is_reported_before_the_render_starts():
+    """3 GB 服务器没有页面文件时，渲染会被静默杀掉——必须提前说。"""
+    from app.bot import sysreq
+
+    notes = sysreq.warnings(sysreq.Memory(total_ram_mb=3072, total_pagefile_mb=0))
+    assert notes
+    assert "pagefile" in notes[0]
+    assert any("Set-CimInstance" in note for note in notes)
+
+
+def test_a_big_enough_machine_is_not_nagged():
+    from app.bot import sysreq
+
+    assert sysreq.warnings(sysreq.Memory(total_ram_mb=4096, total_pagefile_mb=4096)) == []
+
+
+def test_a_tight_machine_with_swap_only_gets_a_gentle_note():
+    from app.bot import sysreq
+
+    # 有页面文件但总量仍然不够：给一句提醒，不要吓唬人去改设置。
+    notes = sysreq.warnings(sysreq.Memory(total_ram_mb=1024, total_pagefile_mb=2048))
+    assert len(notes) == 1
+    assert "tight" in notes[0]
+    assert "Set-CimInstance" not in notes[0]
+
+
+def test_memory_is_unknown_off_windows(monkeypatch):
+    from app.bot import sysreq
+
+    monkeypatch.setattr(sysreq.sys, "platform", "linux")
+    assert sysreq.windows_memory() is None
+    assert sysreq.warnings() == []
